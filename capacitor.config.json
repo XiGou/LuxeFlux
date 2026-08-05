@@ -1,0 +1,32 @@
+{
+  "appId": "com.luxeflux.app",
+  "appName": "Luxe Flux",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "capacitor"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#0A0A0A"
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#0A0A0A",
+    "preferredContentMode": "mobile"
+  },
+  "plugins": {
+    "Haptics": {
+      "vibrateOnInput": false
+    },
+    "SplashScreen": {
+      "launchShowDuration": 800,
+      "launchAutoHide": true,
+      "backgroundColor": "#0A0A0A",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false,
+      "splashFullScreen": true,
+      "splashImmersive": true
+    }
+  }
+}

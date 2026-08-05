@@ -1,0 +1,47 @@
+{
+  "name": "luxe-flux",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Luxe Flux — The $29,980 Match-3. A satirical match-3 game about luxury consumerism, built Mobile-First with Capacitor native-ready support.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit",
+    "sync": "npm run build && npx cap sync",
+    "android": "npm run build && npx cap sync android && npx cap open android",
+    "ios": "npm run build && npx cap sync ios && npx cap open ios",
+    "android:run": "npm run build && npx cap sync android && npx cap run android",
+    "ios:run": "npm run build && npx cap sync ios && npx cap run ios",
+    "test": "tsx scripts/smoke-test.ts"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/haptics": "^6.0.1",
+    "canvas-confetti": "^1.9.3",
+    "framer-motion": "^11.11.9",
+    "howler": "^2.2.4",
+    "lucide-react": "^0.453.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/cli": "^6.1.2",
+    "@capacitor/ios": "^6.1.2",
+    "@types/canvas-confetti": "^1.6.4",
+    "@types/howler": "^2.2.13",
+    "@types/node": "^22.7.5",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.2",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.9",
+    "vite-plugin-pwa": "^0.20.5"
+  }
+}
