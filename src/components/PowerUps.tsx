@@ -1,6 +1,6 @@
 /**
- * PowerUps — VIP 配貨特權道具欄
- * 三種道具: 綠色通道 / 溢價轉售 / 二手配貨
+ * PowerUps — VIP 特权道具栏
+ * 三种道具: 绿色通道 / 溢价转售 / 二手同款
  */
 import { LayoutGrid, Gem, Shuffle } from 'lucide-react';
 import type { PowerUpType } from '../types/game';

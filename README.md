@@ -9,27 +9,27 @@
 
 ## 🎮 遊戲介紹
 
-在 8×8 的棋盤上匹配奢侈品牌 Logo，累積你的 **Prespend（配貨額度）**。
-消除越多，配貨越高 —— 但小心，消費主義的深淵等著你：
+在 8×8 的棋盤上匹配奢侈品牌 Logo，累積你的 **Prespend（消費額度）**。
+消除越多，消費越高 —— 但小心，消費主義的深淵等著你：
 
 - **Match-3** → 每格 +$1,980
 - **Match-4** → 生成行/列爆破符號（×2 倍率）
-- **Match-5** → 生成「全配貨炸彈」，整盤同色清空（×3 倍率 + $2,980 紅利）
+- **Match-5** → 生成「全柜同清炸弹」，整盘同色清空（×3 倍率 + $2,980 紅利）
 - **Cascade 連消** → 連鎖加分，最高連消紀錄在案
 
-配貨達到門檻，解鎖諷刺評語：
+消費達到門檻，解鎖諷刺評語：
 
-| 配貨總額 | 評語 |
+| 消費總額 | 評語 |
 | --- | --- |
-| < $10,000 | SA 對你冷笑了下：「抱歉，本店不單賣配貨配件。」 |
-| $10,000 – $30,000 | 恭喜！您已成功配貨，獲得等候 Birkin 25 包包的名單資格（預計等待 3 年）。 |
+| < $10,000 | SA 對你冷笑了下：「抱歉，本店不單賣配件。」 |
+| $10,000 – $30,000 | 恭喜！您已成功入手，獲得等候 Birkin 25 包包的名單資格（預計等待 3 年）。 |
 | > $50,000 | 尊貴的 VIP，品牌 CEO 親自為您開門！您已擊敗全球 99% 的消費主義受害者！ |
 
-### 💎 VIP 配貨特權（道具）
+### 💎 VIP 消費特權（道具）
 
-1. **配貨綠色通道 (Green Channel)** — 點擊棋盤任意格，直接消除 3×3 範圍。
+1. **綠色通道 (Green Channel)** — 點擊棋盤任意格，直接消除 3×3 範圍。
 2. **溢價轉售 (Markup Resale)** — 隨機將一種普通 Logo 升級為高分「限量版」（消除 ×3）。
-3. **二手配貨 (Resell Market)** — 重新打亂盤面，保證無初始匹配且有解。
+3. **二手同款 (Resell Market)** — 重新打亂盤面，保證無初始匹配且有解。
 
 ---
 
@@ -92,19 +92,22 @@ npx cap open android
 │   ├── manifest.webmanifest   # PWA 清單
 │   └── icons/                 # PWA 圖示（可替換真實素材）
 ├── scripts/
-│   └── generate-icons.cjs     # 生成佔位圖示的腳本
+│   ├── generate-icons.cjs     # 生成佔位圖示的腳本
+│   └── smoke-test.ts          # 邏輯冒煙測試
 └── src/
-    ├── types/game.ts          # 型別定義（格子/道具/狀態）
+    ├── types/game.ts          # 型別定義（格子/道具/狀態/品牌統計）
     ├── utils/
-    │   ├── gameLogic.ts       # 完整消消樂演算法（生成/匹配/交換/消除/重力/道具）
+    │   ├── brands.ts          # 品牌素材池（10 個經典包袋品牌，每局抽 6 種）
+    │   ├── gameLogic.ts       # 完整消消樂演算法（生成/匹配/交換/消除/重力/道具/動畫階段）
     │   └── soundAndHaptics.ts # Capacitor Haptics + Howler 音效封裝
     ├── components/
-    │   ├── GameBoard.tsx      # 8×8 棋盤（Framer Motion + Touch/Drag 手勢）
-    │   ├── TokenFace.tsx      # 符號視覺（佔位 Icon，可替換真實品牌素材）
+    │   ├── GameBoard.tsx      # 8×8 棋盤（Framer Motion 階段化動畫 + 手勢交換）
+    │   ├── BrandMark.tsx      # 品牌徽章 SVG（10 品牌風格化矢量）
+    │   ├── TokenFace.tsx      # 符號視覺（品牌徽章 + 限量/爆破/炸彈）
     │   ├── Header.tsx         # 步數 / Logo / Prespend
     │   ├── PowerUps.tsx       # 道具欄
-    │   └── GameOverModal.tsx  # 結算彈窗 + canvas-confetti 禮花
-    └── App.tsx                # 主頁面狀態整合
+    │   └── GameOverModal.tsx  # 結算彈窗 + 品牌採購統計 + 禮花
+    └── App.tsx                # 主頁面狀態整合 + 動畫狀態機
 ```
 
 ---
@@ -130,15 +133,28 @@ npx cap open android
 
 ---
 
-## 🧩 替換真實品牌素材
+## 🎮 動畫框架（Web 遊戲引擎級體驗）
 
-目前棋盤符號使用 **Lucide 圖示**作為佔位原型（`src/components/TokenFace.tsx`）。
+一次交換不再「閃現」到最終狀態，而是按主流消消樂引擎的標準階段播放：
 
-要換成真實素材：
+1. **交換 (swapping)** — 兩格元素保留 id，透過 Framer Motion `layout` FLIP 平滑滑動換位；
+2. **消除 (clearing)** — 命中格縮小淡出（pop），道具升級目標疊加金色脈衝；
+3. **下落 (falling)** — 下落格保留原 id（視覺上連續下落），頂部新元素帶新 id 落入；
+4. **連消 (cascade)** — 重複「消除→下落」直到盤面穩定，全程 `busy` 鎖防誤觸。
 
-1. 把你的 Logo SVG/PNG 放進 `public/assets/brands/`。
-2. 修改 `TokenFace.tsx` 的 `ICONS` 映射，改用 `<img>` 或內聯 SVG。
-3. 重新執行 `npm run build && npx cap sync`。
+交換失敗會以 shake 抖動反饋（不消耗步數），符合主流消消樂手感。
+
+---
+
+## 🧩 品牌素材
+
+棋盤符號為 **10 個經典包袋品牌** 的風格化 SVG 徽章（`src/components/BrandMark.tsx`）：
+
+> 香奈儿 · 爱马仕 · 路易威登 · 古驰 · 迪奥 · 普拉达 · 赛琳 · 圣罗兰 · 葆蝶家 · 博柏利
+
+- 每局**隨機抽取 6 種**（主流消消樂 5~7 種）生成對局，素材池大於局內種類，多局體驗各不相同。
+- 素材為內聯矢量 SVG，離線可用、縮放不失真，後續可替換為 World Vector Logo / Iconfont / Freebie Supply 的真實品牌 SVG。
+- 結算畫面展示**每個品牌本局採購（消除）數量**，增加收集趣味。
 
 ---
 
