@@ -1,0 +1,15 @@
+{
+  "name": "Luxe Flux — The $29,980 Match-3",
+  "short_name": "Luxe Flux",
+  "description": "A satirical match-3 about luxury consumerism. Match logos, build your Prespend, earn the Birkin.",
+  "theme_color": "#0A0A0A",
+  "background_color": "#0A0A0A",
+  "display": "standalone",
+  "orientation": "portrait",
+  "start_url": "/",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
