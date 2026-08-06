@@ -45,7 +45,9 @@ export default defineConfig({
         manualChunks: {
           // Split heavy deps so the initial WebView/JS load stays snappy
           'vendor-react': ['react', 'react-dom', 'framer-motion'],
-          'vendor-utils': ['canvas-confetti', 'howler', 'lucide-react']
+          'vendor-utils': ['canvas-confetti', 'howler', 'lucide-react'],
+          // Phaser 3 引擎体积较大，独立分包便于长缓存
+          'vendor-phaser': ['phaser']
         }
       }
     }
