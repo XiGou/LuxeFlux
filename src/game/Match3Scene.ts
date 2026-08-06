@@ -43,7 +43,6 @@ export const SCENE_KEY = 'Match3Scene';
 
 const CELL_RATIO = 0.73; // 方块纹理画布相对格子占比：徽章圆盘约占画布 90%，0.73×0.9≈0.66 即原 DOM 版徽章在格内的视觉比例
 const SWAP_MS = 190; // 交换滑动时长
-const FAIL_MS = 420; // 交换失败回弹总时长
 const CLEAR_MS = 250; // 消除 pop 时长
 const FALL_MS = 260; // 下落时长（单格）
 
@@ -129,6 +128,11 @@ export default class Match3Scene extends Phaser.Scene {
         this.dragFrom = i;
         const view = this.viewAt(i);
         this.dragImage = view ? view.sprite : null;
+        // 按下即反馈：起点格轻微放大 + 置顶，让玩家知道“抓住了”
+        if (view) {
+          view.sprite.setScale(this.baseScale(view.sprite) * 1.06);
+          view.sprite.setDepth(10);
+        }
       },
       this
     );
@@ -174,12 +178,16 @@ export default class Match3Scene extends Phaser.Scene {
           Math.abs(r - fromR) + Math.abs(c - fromC) === 1;
 
         // 无论是否有效交换，都结束本次拖拽（避免被误判为点按）
+        const dragged = this.dragImage;
         this.resetDragVisual();
         this.dragFrom = -1;
         this.dragImage = null;
 
         if (validNeighbor) {
           this.onSwap(from, to);
+        } else if (dragged) {
+          // 拖到非法位置（非相邻格）：原地抖动提示“不能换”
+          this.playDeniedShake(dragged);
         }
       },
       this
@@ -402,28 +410,104 @@ export default class Match3Scene extends Phaser.Scene {
     });
   }
 
-  /** 交换失败：两格抖动回弹（不消耗步数） */
+  /**
+   * 交换失败（无匹配可消）：模拟交换滑动 → 抖动（拒绝提示）→ 滑回原位。
+   * 不消耗步数，内部棋盘不变（视觉上交换后回弹），玩家能明确感知“这步换不成”。
+   */
   playSwapFail(from: number, to: number): Promise<void> {
     return new Promise((resolve) => {
       const a = this.viewAt(from);
       const b = this.viewAt(to);
-      const targets: Phaser.GameObjects.Image[] = [];
-      if (a) targets.push(a.sprite);
-      if (b) targets.push(b.sprite);
-      if (targets.length === 0) return resolve();
+      if (!a || !b) return resolve();
 
+      const aHome = {
+        x: this.colCenter(from % this.cols),
+        y: this.rowCenter(Math.floor(from / this.cols))
+      };
+      const bHome = {
+        x: this.colCenter(to % this.cols),
+        y: this.rowCenter(Math.floor(to / this.cols))
+      };
+
+      // 阶段 1：模拟交换滑动（视觉上“先换过去”）
+      a.sprite.setDepth(10);
+      b.sprite.setDepth(10);
       this.tweens.add({
-        targets,
-        x: (t: Phaser.GameObjects.Image) => {
-          const i = this.indexOfView(t);
-          return i >= 0 ? this.colCenter(i % this.cols) : this.colCenter(0);
-        },
-        duration: FAIL_MS,
-        ease: 'Sine.easeInOut',
-        repeat: 2,
-        yoyo: true,
-        onComplete: () => resolve()
+        targets: a.sprite,
+        x: bHome.x,
+        y: bHome.y,
+        duration: SWAP_MS,
+        ease: 'Cubic.easeInOut'
       });
+      this.tweens.add({
+        targets: b.sprite,
+        x: aHome.x,
+        y: aHome.y,
+        duration: SWAP_MS,
+        ease: 'Cubic.easeInOut',
+        onComplete: () => {
+          // 阶段 2：在“交换后”的位置抖动，强化“被拒绝”的反馈
+          this.tweens.add({
+            targets: [a.sprite, b.sprite],
+            x: (img: Phaser.GameObjects.Image) => {
+              const anchor = img === a.sprite ? bHome : aHome;
+              return anchor.x + Phaser.Math.Between(-7, 7);
+            },
+            y: (img: Phaser.GameObjects.Image) => {
+              const anchor = img === a.sprite ? bHome : aHome;
+              return anchor.y + Phaser.Math.Between(-5, 5);
+            },
+            duration: 36,
+            repeat: 3,
+            yoyo: true,
+            ease: 'Sine.easeInOut',
+            onComplete: () => {
+              // 阶段 3：滑回原位 + 恢复层级
+              this.tweens.add({
+                targets: a.sprite,
+                x: aHome.x,
+                y: aHome.y,
+                duration: SWAP_MS,
+                ease: 'Cubic.easeInOut',
+                onComplete: () => {
+                  this.setDepthByIndex(a.sprite, from);
+                }
+              });
+              this.tweens.add({
+                targets: b.sprite,
+                x: bHome.x,
+                y: bHome.y,
+                duration: SWAP_MS,
+                ease: 'Cubic.easeInOut',
+                onComplete: () => {
+                  this.setDepthByIndex(b.sprite, to);
+                  resolve();
+                }
+              });
+            }
+          });
+        }
+      });
+    });
+  }
+
+  /** 拖到非法方向：原地轻微抖动提示（不可交换，非相邻格） */
+  private playDeniedShake(img: Phaser.GameObjects.Image): void {
+    const homeX = img.x;
+    const homeY = img.y;
+    this.tweens.add({
+      targets: img,
+      x: () => homeX + Phaser.Math.Between(-6, 6),
+      y: () => homeY + Phaser.Math.Between(-4, 4),
+      duration: 42,
+      repeat: 3,
+      yoyo: true,
+      ease: 'Sine.easeInOut',
+      onComplete: () => {
+        img.setPosition(homeX, homeY);
+        img.setScale(this.baseScale(img));
+        img.setDepth(0);
+      }
     });
   }
 
