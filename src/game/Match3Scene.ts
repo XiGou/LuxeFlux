@@ -65,6 +65,8 @@ export default class Match3Scene extends Phaser.Scene {
   // 拖拽手势状态
   private dragFrom = -1;
   private dragImage: Phaser.GameObjects.Image | null = null;
+  /** 各精灵的基准缩放（由 createSprite 的 setDisplaySize 决定），缩放动画需在此之上叠加 */
+  private baseScales = new Map<Phaser.GameObjects.Image, number>();
 
   constructor() {
     super(SCENE_KEY);
@@ -87,6 +89,7 @@ export default class Match3Scene extends Phaser.Scene {
     this.board = [];
     this.dragFrom = -1;
     this.dragImage = null;
+    this.baseScales.clear();
 
     const sparkKey = registerSparkTexture(this);
 
@@ -146,7 +149,7 @@ export default class Match3Scene extends Phaser.Scene {
           if (Math.abs(dx) >= threshold || Math.abs(dy) >= threshold) {
             this.dragImage.setPosition(baseX + dx, baseY + dy);
             this.dragImage.setDepth(10);
-            this.dragImage.setScale(1.08);
+            this.dragImage.setScale(this.baseScale(this.dragImage) * 1.08);
           }
         }
 
@@ -205,7 +208,7 @@ export default class Match3Scene extends Phaser.Scene {
       const i = this.indexOfView(this.dragImage);
       if (i >= 0) {
         this.dragImage.setPosition(this.colCenter(i % this.cols), this.rowCenter(Math.floor(i / this.cols)));
-        this.dragImage.setScale(1);
+        this.dragImage.setScale(this.baseScale(this.dragImage));
         this.dragImage.setDepth(0);
       }
     }
@@ -253,6 +256,11 @@ export default class Match3Scene extends Phaser.Scene {
     return this.views.get(cell.id);
   }
 
+  /** 获取精灵的基准缩放（未设置时回退到当前 scaleX） */
+  private baseScale(img: Phaser.GameObjects.Image): number {
+    return this.baseScales.get(img) ?? img.scaleX;
+  }
+
   private indexOfView(image: Phaser.GameObjects.Image): number {
     for (let i = 0; i < this.board.length; i++) {
       const cell = this.board[i];
@@ -271,6 +279,8 @@ export default class Match3Scene extends Phaser.Scene {
       .image(this.colCenter(i % this.cols), this.rowCenter(Math.floor(i / this.cols)), key)
       .setDisplaySize(size, size)
       .setDepth(0);
+    // 记录基准缩放：后续所有 setScale 均以此为基数（避免绝对值覆盖导致元素被放大）
+    this.baseScales.set(img, img.scaleX);
     this.images.push(img);
     return img;
   }
@@ -322,7 +332,7 @@ export default class Match3Scene extends Phaser.Scene {
       } else {
         view.cell = cell;
         view.sprite.setPosition(this.colCenter(i % this.cols), this.rowCenter(Math.floor(i / this.cols)));
-        view.sprite.setScale(1);
+        view.sprite.setScale(this.baseScale(view.sprite));
         view.sprite.setDepth(0);
         if (view.frame) view.frame.setPosition(view.sprite.x, view.sprite.y);
       }
@@ -438,7 +448,7 @@ export default class Match3Scene extends Phaser.Scene {
         this.emitBurst(sprite.x, sprite.y, cascade);
         this.tweens.add({
           targets: sprite,
-          scale: 0.05,
+          scale: (img: Phaser.GameObjects.Image) => this.baseScale(img) * 0.05,
           alpha: 0,
           angle: '+=' + Phaser.Math.Between(-90, 90),
           duration: CLEAR_MS,
@@ -514,7 +524,7 @@ export default class Match3Scene extends Phaser.Scene {
       if (targets.length === 0) return resolve();
       this.tweens.add({
         targets,
-        scale: 1.18,
+        scale: (img: Phaser.GameObjects.Image) => this.baseScale(img) * 1.18,
         duration: 90,
         yoyo: true,
         ease: 'Sine.easeOut',
@@ -555,6 +565,8 @@ export default class Match3Scene extends Phaser.Scene {
       if (i < 0) continue;
       const size = Math.floor(this.cellSize * CELL_RATIO);
       view.sprite.setDisplaySize(size, size);
+      // 尺寸变化后基准缩放也随之变化，需同步记录
+      this.baseScales.set(view.sprite, view.sprite.scaleX);
       view.sprite.setPosition(this.colCenter(i % this.cols), this.rowCenter(Math.floor(i / this.cols)));
       if (view.frame) view.frame.setPosition(view.sprite.x, view.sprite.y);
     }
