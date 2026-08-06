@@ -162,17 +162,18 @@ export default function App() {
 
       const swapped = phaseSwap(prev.board, from, to);
       if (!swapped) {
-        // 无效交换：shake 反馈，不消耗步数
+        // 无效交换：交换滑动 → 抖动 → 复原，不消耗步数；busy 锁防止动画期间误触
         playSound('swap');
         tapHaptic();
         safeSetGame((g) => ({
           ...g,
+          busy: true,
           animation: { phase: 'swapfail', swapping: [from, to], clearing: [], cascade: 0 }
         }));
         boardRef.current?.playSwapFail(from, to).then(() => {
           safeSetGame((g) =>
             g.animation.phase === 'swapfail'
-              ? { ...g, animation: IDLE_ANIM }
+              ? { ...g, busy: false, animation: IDLE_ANIM }
               : g
           );
         });
@@ -347,13 +348,13 @@ export default function App() {
       const prev = gameRef.current;
       if (prev.busy || prev.status !== 'playing') return;
       const from = index;
-      const candidates = [from + 1, from + game.cols].filter(
-        (i) =>
-          i >= 0 &&
-          i < game.rows * game.cols &&
-          Math.abs(Math.floor(i / game.cols) - Math.floor(from / game.cols)) +
-            Math.abs((i % game.cols) - (from % game.cols)) === 1
-      );
+      const isNeighbor = (i: number) =>
+        i >= 0 &&
+        i < game.rows * game.cols &&
+        Math.abs(Math.floor(i / game.cols) - Math.floor(from / game.cols)) +
+          Math.abs((i % game.cols) - (from % game.cols)) === 1;
+      // 优先右/下（更符合直觉），无可用时回退左/上，保证任意格点按都有反馈
+      const candidates = [from + 1, from + game.cols, from - 1, from - game.cols].filter(isNeighbor);
       const target = candidates[0];
       if (target !== undefined) {
         tapHaptic();
