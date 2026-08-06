@@ -45,11 +45,18 @@ export default {
         float: {
           '0%, 100%': { transform: 'translateY(0)' },
           '50%': { transform: 'translateY(-4px)' }
+        },
+        shake: {
+          '0%, 100%': { transform: 'translateX(0)' },
+          '25%': { transform: 'translateX(-5px)' },
+          '50%': { transform: 'translateX(5px)' },
+          '75%': { transform: 'translateX(-3px)' }
         }
       },
       animation: {
         shimmer: 'shimmer 3.2s linear infinite',
-        float: 'float 5s ease-in-out infinite'
+        float: 'float 5s ease-in-out infinite',
+        shake: 'shake 0.4s ease-in-out'
       }
     }
   },

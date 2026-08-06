@@ -1,6 +1,6 @@
 /**
- * Header — 奢華黑金頂欄
- * 左: 步數 | 中: Logo | 右: 配貨額度 (Prespend)
+ * Header — 奢华黑金顶栏
+ * 左: 步数 | 中: Logo | 右: 消费额 (Prespend)
  */
 import { Footprints } from 'lucide-react';
 
@@ -12,7 +12,7 @@ interface HeaderProps {
 export default function Header({ moves, score }: HeaderProps) {
   return (
     <header className="flex items-center justify-between gap-2 px-4 pb-2 pt-1">
-      {/* 步數 */}
+      {/* 步数 */}
       <div className="flex min-w-[88px] flex-col items-start">
         <span className="font-body text-[10px] uppercase tracking-[0.2em] text-ivory/40">
           Moves
@@ -35,7 +35,7 @@ export default function Header({ moves, score }: HeaderProps) {
         </span>
       </div>
 
-      {/* 配貨額度 */}
+      {/* 消费额 */}
       <div className="flex min-w-[96px] flex-col items-end">
         <span className="font-body text-[10px] uppercase tracking-[0.2em] text-ivory/40">
           Prespend

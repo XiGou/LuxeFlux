@@ -1,34 +1,29 @@
 /**
- * Luxe Flux — 完整 8x8 消消樂演算法
+ * Luxe Flux — 完整 8x8 消消乐算法
  *
  * 功能:
- *  1. 生成無初始匹配的棋盤
- *  2. 檢查 / 交換相鄰格子（交換後需形成匹配，否則回退）
- *  3. 檢測 Match-3 / Match-4 / Match-5 並生成爆破符號與全配貨炸彈
- *  4. 重力下落 + 頂部補充（可連續 Cascade）
- *  5. 道具邏輯：Green Channel / Markup Resale / Resell Market
+ *  1. 每局从品牌素材池随机抽取 6 种方块（主流消消乐种类数）
+ *  2. 生成无初始匹配的棋盘
+ *  3. 检查 / 交换相邻格子（交换后需形成匹配，否则回退）
+ *  4. 检测 Match-3 / Match-4 / Match-5 并生成爆破符号与全柜同清炸弹
+ *  5. 重力下落 + 顶部补充（下落格子保留 id，供 Framer Motion layout 动画）
+ *  6. 道具逻辑：绿色通道 / 溢价转售 / 二手同款
  *
- * 計分: 每消除 1 個符號 +$1,980；4 連消 ×2、5 連消 ×3、炸彈附加。
- * 棋盤始終保持 rows×cols 個槽位，消除階段以 null 標記空位，重力後補滿。
+ * 计分: 每消除 1 个符号 +$1,980；4 连消 ×2、5 连消 ×3、炸弹附加。
+ * 棋盘始终保持 rows×cols 个槽位，消除阶段以 null 标记空位，重力后补满。
  */
-import type { Cell, TokenType, GameState, MatchEvent, PowerUpResult, Board } from '../types/game';
+import type { Cell, TokenType, GameState, MatchEvent, PowerUpResult, Board, BrandStat } from '../types/game';
+import { sampleTokenTypes, BRAND_NAMES, TOKEN_POOL } from './brands';
 
 export const ROWS = 8;
 export const COLS = 8;
-export const BASE_POINTS = 1980; // $1,980 / 個
+export const BASE_POINTS = 1980; // $1,980 / 个
 export const START_MOVES = 15;
 
-/** 佔位素材符號集（後續替換為真實品牌 Logo 素材） */
-export const TOKEN_TYPES: TokenType[] = [
-  'bag',
-  'heels',
-  'watch',
-  'perfume',
-  'sunglasses',
-  'champagne'
-];
+/** 占位素材符号集（后续替换为真实品牌 Logo 素材）——默认池全部品牌 */
+export const TOKEN_TYPES: TokenType[] = TOKEN_POOL;
 
-/** 產生唯一 id（Framer Motion layout key 用） */
+/** 产生唯一 id（Framer Motion layout key 用） */
 export function cellId(r: number, c: number, salt: number): string {
   return `${r}-${c}-${salt}`;
 }
@@ -38,7 +33,7 @@ export function nextSalt(): number {
   return ++saltCounter;
 }
 
-/** 將 (row, col) 轉為一維 index */
+/** 将 (row, col) 转为一维 index */
 export function idx(r: number, c: number): number {
   return r * COLS + c;
 }
@@ -51,16 +46,16 @@ export function colOf(i: number): number {
   return i % COLS;
 }
 
-/** 隨機符號（可排除指定類型） */
-function randomToken(exclude?: Set<TokenType>): TokenType {
+/** 随机符号（可排除指定类型） */
+function randomToken(tokenTypes: TokenType[], exclude?: Set<TokenType>): TokenType {
   const pool =
-    exclude && exclude.size < TOKEN_TYPES.length
-      ? TOKEN_TYPES.filter((t) => !exclude.has(t))
-      : TOKEN_TYPES;
+    exclude && exclude.size < tokenTypes.length
+      ? tokenTypes.filter((t) => !exclude.has(t))
+      : tokenTypes;
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-/** 隨機正則化值（用於洗牌多樣性） */
+/** 随机正则化值（用于洗牌多样性） */
 function randomJitter(): number {
   return Math.floor(Math.random() * 1000);
 }
@@ -70,38 +65,48 @@ function randomJitter(): number {
 /* ------------------------------------------------------------------ */
 
 /**
- * 生成一個「保證無初始匹配」的棋盤。
- * 逐格填充 + 回溯排除：若填入後會形成三連，改用其他符號。
+ * 生成一个「保证无初始匹配」的棋盘。
+ * 逐格填充 + 回溯排除：若填入后形成三连，改用其他符号。
+ * 默认从素材池随机抽取 6 种（与开局逻辑一致）。
  */
-export function generateBoard(rows = ROWS, cols = COLS): Cell[] {
+export function generateBoard(
+  tokenTypes: TokenType[] = sampleTokenTypes(),
+  rows = ROWS,
+  cols = COLS
+): Cell[] {
   const board: Cell[] = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const banned = new Set<TokenType>();
-      // 左邊兩個相同 → 不能再用
+      // 左边两个相同 → 不能再用
       if (c >= 2 && board[idx(r, c - 1)].type === board[idx(r, c - 2)].type) {
         banned.add(board[idx(r, c - 1)].type);
       }
-      // 上面兩個相同 → 不能再用
+      // 上面两个相同 → 不能再用
       if (r >= 2 && board[idx(r - 1, c)].type === board[idx(r - 2, c)].type) {
         banned.add(board[idx(r - 1, c)].type);
       }
       board.push({
         id: cellId(r, c, nextSalt()),
-        type: randomToken(banned),
+        type: randomToken(tokenTypes, banned),
         limited: false,
-        bomb: false
+        bomb: false,
+        brand: tokenTypes[0]
       });
     }
+  }
+  // 修正 brand：与 type 保持一致
+  for (let i = 0; i < board.length; i++) {
+    board[i] = { ...board[i], brand: board[i].type };
   }
   return board;
 }
 
 /* ------------------------------------------------------------------ */
-/* 匹配檢測                                                            */
+/* 匹配检测                                                            */
 /* ------------------------------------------------------------------ */
 
-/** 找到盤面所有「匹配段」（連續 ≥3 個同型、非空、非炸彈符號） */
+/** 找到盘面所有「匹配段」（连续 ≥3 个同型、非空、非炸弹符号） */
 export function findMatches(board: Board, rows = ROWS, cols = COLS): number[][] {
   const matches: number[][] = [];
 
@@ -164,7 +169,7 @@ export function findMatches(board: Board, rows = ROWS, cols = COLS): number[][] 
   return matches;
 }
 
-/** 將匹配段轉為「要消除的格子集合」 */
+/** 将匹配段转为「要消除的格子集合」 */
 function collectMatchedSet(matches: number[][]): Set<number> {
   const set = new Set<number>();
   for (const seg of matches) for (const i of seg) set.add(i);
@@ -176,23 +181,23 @@ export function hasMatches(board: Board, rows = ROWS, cols = COLS): boolean {
   return findMatches(board, rows, cols).length > 0;
 }
 
-/** 盤面是否有空位（消除後、重力前） */
+/** 盘面是否有空位（消除后、重力前） */
 export function hasHoles(board: Board): boolean {
   return board.some((c) => c === null);
 }
 
 /* ------------------------------------------------------------------ */
-/* 交換                                                                */
+/* 交换                                                                */
 /* ------------------------------------------------------------------ */
 
-/** 交換兩格；若未形成匹配則回退並回傳 null */
+/** 交换两格；若未形成匹配则回退并返回 null */
 export function trySwap(board: Board, a: number, b: number): Board | null {
   const dr = Math.abs(rowOf(a) - rowOf(b));
   const dc = Math.abs(colOf(a) - colOf(b));
-  // 僅允許正交相鄰
+  // 仅允许正交相邻
   if (dr + dc !== 1) return null;
 
-  // 炸彈可與任意相鄰格子交換（交換即觸發）
+  // 炸弹可与任意相邻格子交换（交换即触发）
   if (board[a]?.bomb || board[b]?.bomb) {
     return swapCells(board, a, b);
   }
@@ -211,15 +216,15 @@ function swapCells(board: Board, a: number, b: number): Board {
 }
 
 /* ------------------------------------------------------------------ */
-/* 消除 + 爆破符號生成                                                 */
+/* 消除 + 爆破符号生成                                                 */
 /* ------------------------------------------------------------------ */
 
 /**
- * 對匹配段做「升級處理」：
+ * 对匹配段做「升级处理」：
  *  - 水平 Match-4 → blast='row'（整列爆破）
  *  - 垂直 Match-4 → blast='col'（整行爆破）
- *  - Match-5     → bomb（全配貨炸彈，整盤同色消除）
- * 回傳 [新棋盤, 需要消除的格子集合]
+ *  - Match-5     → bomb（全柜同清炸弹，整盘同色消除）
+ * 返回 [新棋盘, 需要消除的格子集合]
  */
 function upgradeMatches(board: Board, matches: number[][]): [Board, Set<number>] {
   const next = board.slice();
@@ -233,11 +238,11 @@ function upgradeMatches(board: Board, matches: number[][]): [Board, Set<number>]
     const isHorizontal = seg.every((i) => rowOf(i) === rowOf(seg[0]));
 
     if (seg.length === 5) {
-      // 全配貨炸彈
+      // 全柜同清炸弹
       next[anchor] = { ...cell, bomb: true, limited: false, blast: undefined } as Cell;
       continue;
     }
-    // Match-4 → 爆破符號（保留在盤面上，清除時橫掃整列/整行）
+    // Match-4 → 爆破符号（保留在盘面上，清除时横扫整列/整行）
     next[anchor] = {
       ...cell,
       bomb: false,
@@ -248,7 +253,7 @@ function upgradeMatches(board: Board, matches: number[][]): [Board, Set<number>]
   return [next, toClear];
 }
 
-/** 爆破符號 / 炸彈的擴散集合 */
+/** 爆破符号 / 炸弹的扩散集合 */
 function explosionSet(board: Board, anchorIndex: number, cleared: Set<number>): Set<number> {
   const out = new Set<number>(cleared);
   const cell = board[anchorIndex];
@@ -257,7 +262,7 @@ function explosionSet(board: Board, anchorIndex: number, cleared: Set<number>): 
   const c = colOf(anchorIndex);
 
   if (cell.bomb) {
-    // 全配貨炸彈：整盤同色清空 + 連鎖引爆其他同型炸彈
+    // 全柜同清炸弹：整盘同色清空 + 连锁引爆其他同型炸弹
     for (let i = 0; i < board.length; i++) {
       if (board[i] && board[i]!.type === cell.type) out.add(i);
     }
@@ -278,7 +283,7 @@ function explosionSet(board: Board, anchorIndex: number, cleared: Set<number>): 
   return out;
 }
 
-/** 清掉爆破標記（爆破符號消除後，其餘位置回歸普通符號） */
+/** 清掉爆破标记（爆破符号消除后，其余位置回归普通符号） */
 function normalizeBlast(board: Cell[]): Cell[] {
   return board.map((cell) =>
     cell && cell.blast ? { ...cell, blast: undefined, limited: false } : cell
@@ -286,13 +291,13 @@ function normalizeBlast(board: Cell[]): Cell[] {
 }
 
 /**
- * 執行一輪消除：
+ * 执行一轮消除：
  *  1. 找出所有匹配
- *  2. 升級生成爆破符號 / 炸彈
- *  3. 展開爆破範圍
- *  4. 計分（Match-4 ×2、Match-5 ×3、炸彈 +$2,980、限量版 ×3）
- *  5. 將被消除的格子置為 null（保留槽位，交由 gravity 填補）
- * 回傳 [新棋盤(含空位), MatchEvent]
+ *  2. 升级生成爆破符号 / 炸弹
+ *  3. 展开爆破范围
+ *  4. 计分（Match-4 ×2、Match-5 ×3、炸弹 +$2,980、限量版 ×3）
+ *  5. 将待消除格子置为 null（保留槽位，交由 gravity 填补）
+ * 返回 [新棋盘(含空位), MatchEvent]
  */
 export function clearMatches(board: Board): [Board, MatchEvent] {
   const matches = findMatches(board);
@@ -300,30 +305,30 @@ export function clearMatches(board: Board): [Board, MatchEvent] {
   const [upgraded, baseClear] = upgradeMatches(board, matches);
   const cleared = new Set<number>(baseClear);
 
-  // 爆破擴散
+  // 爆破扩散
   for (const seg of matches) {
     const anchor = seg[Math.floor(seg.length / 2)];
     const spread = explosionSet(upgraded, anchor, cleared);
     for (const s of spread) cleared.add(s);
   }
 
-  // 計分
+  // 计分
   const hasBomb = matches.some((seg) => upgraded[seg[Math.floor(seg.length / 2)]]?.bomb);
   let points = 0;
   for (const seg of matches) {
     const mult = seg.length === 5 ? 3 : seg.length === 4 ? 2 : 1;
     points += seg.length * BASE_POINTS * mult;
   }
-  if (hasBomb) points += 2980; // 全配貨炸彈紅利
+  if (hasBomb) points += 2980; // 全柜同清炸弹红利
 
-  // 爆破波及 + 限量版加價
+  // 爆破波及 + 限量版加价
   const extra = cleared.size - baseClear.size;
   if (extra > 0) points += extra * 500;
   for (const i of cleared) {
-    if (board[i]?.limited) points += BASE_POINTS * 2; // 限量版 ×3 總計
+    if (board[i]?.limited) points += BASE_POINTS * 2; // 限量版 ×3 总计
   }
 
-  // 標記消除（保留槽位 = null）
+  // 标记消除（保留槽位 = null）
   const clearedIds = new Set<string>();
   const newBoard = normalizeBlast(upgraded as Cell[]).map((cell, i) => {
     if (cleared.has(i)) {
@@ -351,10 +356,19 @@ export function clearMatches(board: Board): [Board, MatchEvent] {
 /* ------------------------------------------------------------------ */
 
 /**
- * 重力下落並在頂部補充新符號。
- * 輸入可含 null（消除後的棋盤），輸出保證 rows×cols 全部非空。
+ * 重力下落并在顶部补充新符号。
+ * 输入可含 null（消除后的棋盘），输出保证 rows×cols 全部非空。
+ *
+ * ⚠️ 关键：下落格子保留原 id（只更新位置信息），这样 Framer Motion
+ * 的 `layout` FLIP 动画才能识别为「同一元素移动」，实现流畅下落；
+ * 顶部新补充的格子使用新 id。
  */
-export function applyGravity(board: Board, rows = ROWS, cols = COLS): Cell[] {
+export function applyGravity(
+  board: Board,
+  tokenTypes: TokenType[] = sampleTokenTypes(),
+  rows = ROWS,
+  cols = COLS
+): Cell[] {
   const next = board.slice() as (Cell | null)[];
   for (let c = 0; c < cols; c++) {
     let write = rows - 1;
@@ -362,26 +376,31 @@ export function applyGravity(board: Board, rows = ROWS, cols = COLS): Cell[] {
       const cell = next[idx(r, c)];
       if (cell) {
         if (write !== r) {
-          next[idx(write, c)] = { ...cell, id: cellId(write, c, nextSalt()) };
+          // 保留原 id，仅迁移位置 → layout 动画可平滑移动
+          next[idx(write, c)] = cell;
           next[idx(r, c)] = null;
         }
         write--;
       }
     }
-    // 頂部補充
+    // 顶部补充（新元素 → 新 id）
     for (let r = write; r >= 0; r--) {
       next[idx(r, c)] = {
         id: cellId(r, c, nextSalt()),
-        type: randomToken(),
+        type: randomToken(tokenTypes),
         limited: false,
-        bomb: false
+        bomb: false,
+        brand: randomToken(tokenTypes)
       };
     }
   }
-  return next as Cell[];
+  // 修正 brand 与 type 一致
+  return (next as Cell[]).map((cell) =>
+    cell ? { ...cell, brand: cell.type } : cell
+  ) as Cell[];
 }
 
-/** 是否還有可用步數（至少存在一個可形成匹配的交換） */
+/** 是否还有可用步数（至少存在一个可形成匹配的交换） */
 export function hasValidMove(board: Board, rows = ROWS, cols = COLS): boolean {
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -395,9 +414,9 @@ export function hasValidMove(board: Board, rows = ROWS, cols = COLS): boolean {
 }
 
 /**
- * 洗牌（Resell Market 道具）：重新打亂但保證:
- *  - 無初始匹配
- *  - 存在可用步數（最多嘗試 50 次）
+ * 洗牌（二手同款道具）：重新打乱但保证:
+ *  - 无初始匹配
+ *  - 存在可用步数（最多尝试 50 次）
  */
 export function shuffleBoard(board: Board): Cell[] {
   const types = board.filter((c): c is Cell => c !== null).map((c) => c.type);
@@ -410,11 +429,12 @@ export function shuffleBoard(board: Board): Cell[] {
       id: cellId(rowOf(i), colOf(i), nextSalt() + randomJitter()),
       type,
       limited: false,
-      bomb: false
+      bomb: false,
+      brand: type
     }));
     if (!hasMatches(candidate) && hasValidMove(candidate)) return candidate;
   }
-  // 失敗保底：重新生成
+  // 失败保底：重新生成
   return generateBoard();
 }
 
@@ -424,26 +444,26 @@ export function shuffleBoard(board: Board): Cell[] {
 
 export const POWER_UPS = {
   greenChannel: {
-    name: '配貨綠色通道',
+    name: '绿色通道',
     tagline: 'Green Channel · 指定消除 3×3',
     icon: 'layoutGrid' as const,
     uses: 2
   },
   markup: {
-    name: '溢價轉售',
-    tagline: 'Markup Resale · 隨機升級限量版',
+    name: '溢价转售',
+    tagline: 'Markup Resale · 随机升级限量版',
     icon: 'gem' as const,
     uses: 1
   },
   resell: {
-    name: '二手配貨',
-    tagline: 'Resell Market · 重新打亂盤面',
+    name: '二手同款',
+    tagline: 'Resell Market · 重新打乱盘面',
     icon: 'shuffle' as const,
     uses: 1
   }
 };
 
-/** 道具 1：綠色通道 — 以中心格為準消除 3×3 */
+/** 道具 1：绿色通道 — 以中心格为准消除 3×3 */
 export function useGreenChannel(board: Board, centerIndex: number): PowerUpResult {
   const r = rowOf(centerIndex);
   const c = colOf(centerIndex);
@@ -465,7 +485,7 @@ export function useGreenChannel(board: Board, centerIndex: number): PowerUpResul
   return { board: next, score: points, moves: 0, cleared: cells, cascades: 0 };
 }
 
-/** 道具 2：溢價轉售 — 隨機將一種普通符號升級為「限量版」(消除 ×3) */
+/** 道具 2：溢价转售 — 随机将一种普通符号升级为「限量版」(消除 ×3) */
 export function useMarkup(board: Board): PowerUpResult {
   const cells = board.filter((c): c is Cell => c !== null);
   const present = Array.from(new Set(cells.map((c) => c.type)));
@@ -478,23 +498,48 @@ export function useMarkup(board: Board): PowerUpResult {
   return { board: next, score: 0, moves: 0 };
 }
 
-/** 道具 3：二手配貨 — 打亂盤面（保證無初始匹配且有解） */
+/** 道具 3：二手同款 — 打乱盘面（保证无初始匹配且有解） */
 export function useResell(board: Board): PowerUpResult {
   return { board: shuffleBoard(board), score: 0, moves: 0 };
 }
 
 /* ------------------------------------------------------------------ */
-/* 遊戲流程組合                                                         */
+/* 阶段化处理（动画框架）                                               */
 /* ------------------------------------------------------------------ */
 
 /**
- * 完整的一次「交換 → 消除 → 重力 → 連消」處理。
- * 回傳 [最終棋盤, 累計分數, 連消次數, MatchEvents]
+ * 阶段 1：交换。返回交换后的棋盘。
+ * 仅做 swapCells（不触发消除），动画结束后由 App 调用 beginCascade。
+ */
+export function phaseSwap(board: Board, from: number, to: number): Board | null {
+  return trySwap(board, from, to);
+}
+
+/**
+ * 阶段 2：消除当前所有匹配 + 返回事件。
+ * 若无可消除匹配，返回 [null, null]。
+ */
+export function phaseClear(board: Board): [Board, MatchEvent] | [null, null] {
+  if (!hasMatches(board)) return [null, null];
+  return clearMatches(board);
+}
+
+/**
+ * 阶段 3：重力下落。
+ */
+export function phaseGravity(board: Board, tokenTypes?: TokenType[]): Cell[] {
+  return applyGravity(board, tokenTypes);
+}
+
+/**
+ * 完整的一次「交换 → 消除 → 重力 → 连消」处理（非动画场景 / 逻辑测试用）。
+ * 返回 [最终棋盘, 累计分数, 连消次数, MatchEvents]
  */
 export function processSwap(
   board: Board,
   from: number,
-  to: number
+  to: number,
+  tokenTypes: TokenType[] = sampleTokenTypes()
 ): [Cell[], number, number, MatchEvent[]] {
   let current = trySwap(board, from, to);
   if (!current) return [board.filter((c): c is Cell => c !== null), 0, 0, []];
@@ -508,47 +553,87 @@ export function processSwap(
     totalPoints += evt.points;
     cascades++;
     events.push(evt);
-    current = applyGravity(afterClear);
+    current = applyGravity(afterClear, tokenTypes);
     if (!hasMatches(current)) break;
   }
-  return [applyGravity(current), totalPoints, cascades, events];
+  return [applyGravity(current, tokenTypes), totalPoints, cascades, events];
 }
 
-/** 道具使用後：統一處理重力 + 連消（回傳最終盤面、分數、連消數） */
-export function processPowerUp(_board: Board, result: PowerUpResult): [Cell[], number, number] {
+/** 道具使用后：统一处理重力 + 连消（返回最终盘面、分数、连消数） */
+export function processPowerUp(
+  _board: Board,
+  result: PowerUpResult,
+  tokenTypes: TokenType[] = sampleTokenTypes()
+): [Cell[], number, number] {
   let current = result.board;
   let totalPoints = result.score;
   let cascades = 0;
 
   if (result.cleared) {
-    current = applyGravity(current);
+    current = applyGravity(current, tokenTypes);
   }
   while (hasMatches(current)) {
     const [afterClear, evt] = clearMatches(current);
     totalPoints += evt.points;
     cascades++;
-    current = applyGravity(afterClear);
+    current = applyGravity(afterClear, tokenTypes);
     if (!hasMatches(current)) break;
   }
-  return [applyGravity(current), totalPoints, cascades];
+  return [applyGravity(current, tokenTypes), totalPoints, cascades];
 }
 
-/** 建構初始 GameState */
+/** 构建初始 GameState（每局随机抽取方块种类） */
 export function createInitialState(): GameState {
+  const tokenTypes = sampleTokenTypes();
+  const board = generateBoard(tokenTypes);
+  const emptyStats = emptyBrandStats(tokenTypes);
   return {
-    board: generateBoard(),
+    board,
     rows: ROWS,
     cols: COLS,
     moves: START_MOVES,
     score: 0,
     status: 'playing',
     maxCombo: 0,
-    busy: false
+    busy: false,
+    tokenTypes,
+    brandStats: emptyStats,
+    animation: { phase: 'idle', swapping: [], clearing: [], cascade: 0 }
   };
 }
 
+/** 初始化品牌统计（本局出现过的品牌清零） */
+export function emptyBrandStats(tokenTypes: TokenType[]): Record<TokenType, number> {
+  const stats = {} as Record<TokenType, number>;
+  for (const t of tokenTypes) stats[t] = 0;
+  return stats;
+}
+
+/** 累加消除事件的品牌统计（防御性：支持不在初始集合中的新品牌） */
+export function mergeBrandStats(
+  stats: Record<TokenType, number>,
+  events: MatchEvent[]
+): Record<TokenType, number> {
+  const next = { ...stats };
+  for (const evt of events) {
+    for (const cell of evt.cells) {
+      const type = cell.brand ?? cell.type;
+      next[type] = (next[type] ?? 0) + 1;
+    }
+  }
+  return next;
+}
+
+/** 将统计对象转为排序列表（数量降序，供结算展示） */
+export function toBrandStatsList(stats: Record<TokenType, number>): BrandStat[] {
+  return (Object.keys(stats) as TokenType[])
+    .filter((t) => (stats[t] ?? 0) > 0)
+    .map((t) => ({ type: t, name: BRAND_NAMES[t], count: stats[t] ?? 0 }))
+    .sort((a, b) => b.count - a.count);
+}
+
 /* ------------------------------------------------------------------ */
-/* 結算評語                                                            */
+/* 结算评语                                                            */
 /* ------------------------------------------------------------------ */
 
 export function verdict(score: number): {
@@ -559,20 +644,20 @@ export function verdict(score: number): {
   if (score < 10000) {
     return {
       tier: 'cold',
-      title: '本店不單賣配件',
-      message: 'SA 對你冷笑了下：「抱歉，本店不單賣配貨配件。」'
+      title: '本店不单卖配件',
+      message: 'SA 对你冷笑了下：「抱歉，本店不单卖同款配件。」'
     };
   }
   if (score <= 30000) {
     return {
       tier: 'waitlist',
-      title: '恭喜！您已進入等候名單',
-      message: `恭喜！您已成功配貨 $${score.toLocaleString()}，獲得等候 Birkin 25 包包的名單資格（預計等待 3 年）。`
+      title: '恭喜！您已进入等候名单',
+      message: `恭喜！您已成功入手 $${score.toLocaleString()} 的经典款，获得等候 Birkin 25 的名额（预计等待 3 年）。`
     };
   }
   return {
     tier: 'vip',
-    title: '尊貴的 VIP',
-    message: `尊貴的 VIP，品牌 CEO 親自為您開門！您已擊敗全球 99% 的消費主義受害者！（配貨總額 $${score.toLocaleString()}）`
+    title: '尊贵的 VIP',
+    message: `尊贵的 VIP，品牌 CEO 亲自为您开门！您已击败全球 99% 的消费主义受害者！（消费总额 $${score.toLocaleString()}）`
   };
 }
