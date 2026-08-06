@@ -41,7 +41,7 @@ export const INTERACTIVE = { value: true } as { value: boolean };
 
 export const SCENE_KEY = 'Match3Scene';
 
-const CELL_RATIO = 0.86; // 方块相对格子占比
+const CELL_RATIO = 0.73; // 方块纹理画布相对格子占比：徽章圆盘约占画布 90%，0.73×0.9≈0.66 即原 DOM 版徽章在格内的视觉比例
 const SWAP_MS = 190; // 交换滑动时长
 const FAIL_MS = 420; // 交换失败回弹总时长
 const CLEAR_MS = 250; // 消除 pop 时长
@@ -266,7 +266,7 @@ export default class Match3Scene extends Phaser.Scene {
     if (!this.textures.exists(key)) {
       registerTokenTextures(this, [cell.type]);
     }
-    const size = Math.floor(this.cellSize * CELL_RATIO * 1.6);
+    const size = Math.floor(this.cellSize * CELL_RATIO);
     const img = this.add
       .image(this.colCenter(i % this.cols), this.rowCenter(Math.floor(i / this.cols)), key)
       .setDisplaySize(size, size)
@@ -553,7 +553,7 @@ export default class Match3Scene extends Phaser.Scene {
     for (const view of this.views.values()) {
       const i = this.indexOfView(view.sprite);
       if (i < 0) continue;
-      const size = Math.floor(this.cellSize * CELL_RATIO * 1.6);
+      const size = Math.floor(this.cellSize * CELL_RATIO);
       view.sprite.setDisplaySize(size, size);
       view.sprite.setPosition(this.colCenter(i % this.cols), this.rowCenter(Math.floor(i / this.cols)));
       if (view.frame) view.frame.setPosition(view.sprite.x, view.sprite.y);
