@@ -13,8 +13,10 @@ export type TokenType =
   | 'prada'
   | 'celine'
   | 'ysl'
-  | 'bottega'
-  | 'burberry';
+  | 'fendi'
+  | 'burberry'
+  | 'bvlgari'
+  | 'tiffany';
 
 /** 棋盘上的单个格子 */
 export interface Cell {

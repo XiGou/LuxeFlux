@@ -1,10 +1,12 @@
 /**
  * Luxe Flux — 品牌素材池
- * 从经典包袋品牌中精选 10 个，每局随机抽取 6 种生成对局
+ * 从经典包袋品牌中精选 12 个，每局随机抽取 6 种生成对局
  * （主流消消乐一般为 5~7 种方块，取 6 种最舒适）。
  *
- * 素材以「风格化 SVG 徽章」内联实现（见 components/BrandMark.tsx），
- * 无需外部图片资源，离线可用、矢量清晰、缩放不失真。
+ * 素材为一张 384x512 雪碧图（4 行 x 3 列，每 tile 128x128，透明背景）：
+ *   public/sprites/luxe_flux_v2_12tiles_sprite.png
+ * 每局使用其中 6 种品牌，离线可用、高清矢量级清晰度。
+ *
  * 品牌与图标仅作讽刺消费主义的艺术引用，不隶属任何品牌。
  */
 import type { TokenType } from '../types/game';
@@ -12,18 +14,20 @@ import type { TokenType } from '../types/game';
 /** 每局使用的方块种类数（主流 match-3：Candy Crush / Royal Match 等 5~7 种） */
 export const GAME_TOKEN_COUNT = 6;
 
-/** 品牌素材池（10 个经典包袋品牌） */
+/** 品牌素材池（12 个经典包袋品牌，对应雪碧图 12 tile） */
 export const TOKEN_POOL: TokenType[] = [
-  'chanel', // 香奈儿
-  'hermes', // 爱马仕
-  'louisvuitton', // 路易威登
   'gucci', // 古驰
-  'dior', // 迪奥
-  'prada', // 普拉达
   'celine', // 赛琳
+  'hermes', // 爱马仕
   'ysl', // 圣罗兰
-  'bottega', // 葆蝶家
-  'burberry' // 博柏利
+  'prada', // 普拉达
+  'chanel', // 香奈儿
+  'louisvuitton', // 路易威登
+  'dior', // 迪奥
+  'fendi', // 芬迪
+  'burberry', // 博柏利
+  'bvlgari', // 宝格丽
+  'tiffany' // 蒂芙尼
 ];
 
 /** 品牌中文名（简体） */
@@ -36,8 +40,10 @@ export const BRAND_NAMES: Record<TokenType, string> = {
   prada: '普拉达',
   celine: '赛琳',
   ysl: '圣罗兰',
-  bottega: '葆蝶家',
-  burberry: '博柏利'
+  fendi: '芬迪',
+  burberry: '博柏利',
+  bvlgari: '宝格丽',
+  tiffany: '蒂芙尼'
 };
 
 /** 品牌英文名 */
@@ -50,22 +56,26 @@ export const BRAND_EN: Record<TokenType, string> = {
   prada: 'PRADA',
   celine: 'CÉLINE',
   ysl: 'SAINT LAURENT',
-  bottega: 'BOTTEGA VENETA',
-  burberry: 'BURBERRY'
+  fendi: 'FENDI',
+  burberry: 'BURBERRY',
+  bvlgari: 'BVLGARI',
+  tiffany: 'TIFFANY & CO.'
 };
 
-/** 品牌标志性主色（用于徽章描边 / 强调） */
+/** 品牌标志性主色（用于徽章描边 / 强调 / 结算界面） */
 export const BRAND_COLORS: Record<TokenType, string> = {
-  chanel: '#F5F5F7',
-  hermes: '#E96A21',
-  louisvuitton: '#B08A3E',
-  gucci: '#C41E2A',
-  dior: '#F5F5F7',
-  prada: '#F5F5F7',
-  celine: '#E8DCC8',
-  ysl: '#D4AF37',
-  bottega: '#B9834F',
-  burberry: '#B08A5A'
+  gucci: '#33261D', // 黑巧克力
+  celine: '#F9F6EE', // 象牙奶油
+  hermes: '#FF6600', // 爱马仕橙
+  ysl: '#002366', // 深皇家蓝
+  prada: '#101010', // 普拉达黑
+  chanel: '#FFFFFF', // 珍珠白
+  louisvuitton: '#D4AF37', // 金色
+  dior: '#C0C0C0', // 银灰
+  fendi: '#5C3A1E', // 烟草棕
+  burberry: '#9C2A2E', // 红宝石
+  bvlgari: '#40E0D0', // 绿松石
+  tiffany: '#0ABAB5' // 蒂芙尼蓝
 };
 
 /**

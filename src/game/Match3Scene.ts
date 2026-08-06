@@ -15,7 +15,8 @@ import { ROWS, COLS } from '../utils/gameLogic';
 import {
   registerTokenTextures,
   registerSparkTexture,
-  tokenTextureKey
+  tokenTextureKey,
+  loadSpriteSheet
 } from './textures';
 
 export interface Match3SceneConfig {
@@ -41,7 +42,7 @@ export const INTERACTIVE = { value: true } as { value: boolean };
 
 export const SCENE_KEY = 'Match3Scene';
 
-const CELL_RATIO = 0.73; // 方块纹理画布相对格子占比：徽章圆盘约占画布 90%，0.73×0.9≈0.66 即原 DOM 版徽章在格内的视觉比例
+const CELL_RATIO = 0.9; // 实心方块 tile 相对格子占比（雪碧图 tile 本身即完整方块，占格子 90%，留出间隙）
 const SWAP_MS = 190; // 交换滑动时长
 const CLEAR_MS = 250; // 消除 pop 时长
 const FALL_MS = 260; // 下落时长（单格）
@@ -91,6 +92,17 @@ export default class Match3Scene extends Phaser.Scene {
     this.baseScales.clear();
 
     const sparkKey = registerSparkTexture(this);
+
+    // 启动雪碧图加载：就绪后若棋盘已同步，则重绘一次保证 tile 显示
+    loadSpriteSheet(this, () => {
+      if (this.board.length > 0) {
+        // 雪碧图刚就绪：旧 sprite 可能用了缺失纹理，强制重建所有视图
+        for (const view of Array.from(this.views.values())) this.destroyView(view);
+        this.views.clear();
+        this.images = [];
+        this.syncBoard(this.board);
+      }
+    });
 
     // 金属底盘（圆角矩形）
     this.backing = this.add.graphics();

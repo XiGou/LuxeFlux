@@ -24,8 +24,10 @@ const SHORT: Record<TokenType, string> = {
   prada: 'PR',
   celine: 'CE',
   ysl: 'YS',
-  bottega: 'BV',
-  burberry: 'BU'
+  fendi: 'FF',
+  burberry: 'BU',
+  bvlgari: 'BV',
+  tiffany: 'T&CO'
 };
 
 function BrandMark({ type, className = '' }: BrandMarkProps) {
