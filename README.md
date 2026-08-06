@@ -100,14 +100,16 @@ npx cap open android
     │   ├── brands.ts          # 品牌素材池（10 個經典包袋品牌，每局抽 6 種）
     │   ├── gameLogic.ts       # 完整消消樂演算法（生成/匹配/交換/消除/重力/道具/動畫階段）
     │   └── soundAndHaptics.ts # Capacitor Haptics + Howler 音效封裝
+    ├── game/
+    │   ├── Match3Scene.ts     # Phaser 3 場景：棋盤渲染 / Tween 動畫 / 粒子 / 手勢（Canvas/WebGL）
+    │   └── textures.ts        # 品牌徽章 Canvas 紋理 + 金色粒子紋理生成
     ├── components/
-    │   ├── GameBoard.tsx      # 8×8 棋盤（Framer Motion 階段化動畫 + 手勢交換）
-    │   ├── BrandMark.tsx      # 品牌徽章 SVG（10 品牌風格化矢量）
-    │   ├── TokenFace.tsx      # 符號視覺（品牌徽章 + 限量/爆破/炸彈）
+    │   ├── GameBoardBridge.tsx# Phaser.Game 掛載橋：把引擎場景接入 React（ref 命令式 API）
+    │   ├── BrandMark.tsx      # 品牌徽章 SVG（結算彈窗 / 統計用，棋盤改用引擎紋理）
     │   ├── Header.tsx         # 步數 / Logo / Prespend
     │   ├── PowerUps.tsx       # 道具欄
     │   └── GameOverModal.tsx  # 結算彈窗 + 品牌採購統計 + 禮花
-    └── App.tsx                # 主頁面狀態整合 + 動畫狀態機
+    └── App.tsx                # 主頁面狀態整合 + 邏輯狀態機（驅動引擎動畫）
 ```
 
 ---
@@ -133,16 +135,26 @@ npx cap open android
 
 ---
 
-## 🎮 動畫框架（Web 遊戲引擎級體驗）
+## 🎮 動畫框架（Phaser 3 遊戲引擎）
 
-一次交換不再「閃現」到最終狀態，而是按主流消消樂引擎的標準階段播放：
+> 棋盤已從 React DOM 渲染遷移到 **Phaser 3 Canvas/WebGL 引擎**（`src/game/Match3Scene.ts`）。
+> React 只負責「邏輯狀態機 + HUD/UI 外殼」，渲染 / 動畫 / 粒子 / 手勢全部由引擎完成，徹底消除 DOM Reflow 與 React Diff 帶來的卡頓。
 
-1. **交換 (swapping)** — 兩格元素保留 id，透過 Framer Motion `layout` FLIP 平滑滑動換位；
-2. **消除 (clearing)** — 命中格縮小淡出（pop），道具升級目標疊加金色脈衝；
-3. **下落 (falling)** — 下落格保留原 id（視覺上連續下落），頂部新元素帶新 id 落入；
+一次交換按主流消消樂引擎的標準階段播放：
+
+1. **交換 (swapping)** — 引擎 Tween 將兩格平滑滑動換位（`Cubic.easeInOut`）；
+2. **消除 (clearing)** — 命中格縮小旋轉淡出（pop），同時觸發 **金色粒子爆破**（連消段位越高粒子越多）；
+3. **下落 (falling)** — 既有格保留 id 彈性下落（`Bounce.easeOut`），頂部新格從上方落入；
 4. **連消 (cascade)** — 重複「消除→下落」直到盤面穩定，全程 `busy` 鎖防誤觸。
 
-交換失敗會以 shake 抖動反饋（不消耗步數），符合主流消消樂手感。
+**引擎級手感細節**：
+
+- **拖拽跟手**：手指按下時起點格會輕微放大並跟隨手指移動（Drag & Drop 手感），鬆開後回彈；
+- **交換失敗回彈**：兩格 shake 抖動（不消耗步數）；
+- **粒子系統**：`Phaser.Particles` 金色閃光爆破，0/120 FPS 級流暢；
+- **限量版 / 爆破 / 炸彈**：金色描邊高亮（引擎 Graphics 疊加層）。
+
+引擎紋理由品牌徽章 Canvas 程序化生成（`src/game/textures.ts`），與 React 版 BrandMark 視覺一致，無外部圖片、離線可用。
 
 ---
 

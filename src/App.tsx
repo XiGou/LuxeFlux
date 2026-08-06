@@ -1,10 +1,13 @@
 /**
- * Luxe Flux — 主页面逻辑整合
- * 状态管理 + 道具使用 + 步数/结算 + Footer
+ * Luxe Flux — 主页面逻辑整合（Phaser 引擎渲染版）
+ *
+ * 架构：React 仅负责「逻辑状态机 + HUD/UI 外壳」；
+ * 棋盘渲染 / 动画 / 粒子 / 手势全部交给 Phaser（Canvas/WebGL）。
  *
  * 动画框架：将每次操作拆分为标准 Match-3 阶段状态机
  *   交换(swapping) → 消除(clearing) → 下落(falling) → 连消(cascade 循环)
- * 所有动画阶段用 setTimeout 驱动，busy 锁防止动画期间重复操作。
+ * 每个阶段由 React 计算新棋盘状态，并通过 ref 调用引擎播放对应动画；
+ * 动画完成后继续下一阶段。busy 锁防止动画期间重复操作。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
@@ -24,14 +27,9 @@ import {
 } from './utils/gameLogic';
 import { tapHaptic, powerUpHaptic, gameOverHaptic, playSound } from './utils/soundAndHaptics';
 import Header from './components/Header';
-import GameBoard from './components/GameBoard';
 import PowerUps from './components/PowerUps';
 import GameOverModal from './components/GameOverModal';
-
-/** 动画阶段时长（ms） */
-const SWAP_MS = 190; // 交换滑动
-const CLEAR_MS = 250; // 消除 pop
-const FALL_MS = 260; // 重力下落
+import GameBoardBridge, { type GameBoardHandle } from './components/GameBoardBridge';
 
 const IDLE_ANIM = { phase: 'idle' as const, swapping: [], clearing: [], cascade: 0 };
 
@@ -45,6 +43,9 @@ export default function App() {
   const [activePowerUp, setActivePowerUp] = useState<PowerUpType | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [checkoutMode, setCheckoutMode] = useState(false);
+
+  // Phaser 场景 ref
+  const boardRef = useRef<GameBoardHandle>(null);
 
   // 最新状态 ref：让事件处理函数读到最新值，避免闭包过期
   const gameRef = useRef(game);
@@ -62,13 +63,6 @@ export default function App() {
   /** 安全 setGame（组件卸载后忽略） */
   const safeSetGame = useCallback((updater: (g: GameState) => GameState) => {
     if (mountedRef.current) setGame(updater);
-  }, []);
-
-  /** 安全 setTimeout */
-  const later = useCallback((fn: () => void, ms: number) => {
-    window.setTimeout(() => {
-      if (mountedRef.current) fn();
-    }, ms);
   }, []);
 
   /* ================================================================
@@ -111,48 +105,54 @@ export default function App() {
         return;
       }
 
-    playSound('match');
-    powerUpHaptic();
-    if (evt.combo >= 2) gameOverHaptic(); // 连消成就感
+      playSound('match');
+      powerUpHaptic();
+      if (evt.combo >= 2) gameOverHaptic(); // 连消成就感
 
-    const newCombo = prev.animation.cascade + 1;
-    const newScore = prev.score + evt.points;
-    const newStats = mergeBrandStats(prev.brandStats, [evt]);
-    const clearedIdx: number[] = [];
-    for (let i = 0; i < afterClear.length; i++) {
-      if (afterClear[i] === null && prev.board[i] !== null) clearedIdx.push(i);
-    }
+      const newCombo = prev.animation.cascade + 1;
+      const newScore = prev.score + evt.points;
+      const newStats = mergeBrandStats(prev.brandStats, [evt]);
+      const clearedIdx: number[] = [];
+      for (let i = 0; i < afterClear.length; i++) {
+        if (afterClear[i] === null && prev.board[i] !== null) clearedIdx.push(i);
+      }
 
-    safeSetGame((g) => ({
-      ...g,
-      board: afterClear,
-      score: newScore,
-      maxCombo: Math.max(g.maxCombo, newCombo),
-      brandStats: newStats,
-      animation: { phase: 'clearing', swapping: [], clearing: clearedIdx, cascade: newCombo }
-    }));
-
-    // 消除动画 → 重力下落
-    later(() => {
-      const cur = gameRef.current;
-      const fallen = phaseGravity(cur.board, cur.tokenTypes);
       safeSetGame((g) => ({
         ...g,
-        board: fallen,
-        animation: { phase: 'falling', swapping: [], clearing: [], cascade: g.animation.cascade }
+        board: afterClear,
+        score: newScore,
+        maxCombo: Math.max(g.maxCombo, newCombo),
+        brandStats: newStats,
+        animation: { phase: 'clearing', swapping: [], clearing: clearedIdx, cascade: newCombo }
       }));
 
-      // 下落完成 → 检查是否还有匹配（连消）
-      later(() => {
-        const cur2 = gameRef.current;
-        if (hasMatches(cur2.board)) {
-          runCascade(consumeMove);
-        } else {
-          settle(cur2, consumeMove);
-        }
-      }, FALL_MS);
-    }, CLEAR_MS);
-  }, [later, safeSetGame, settle]);
+      // 消除动画（引擎粒子爆破）→ 重力下落
+      boardRef.current
+        ?.playClear(clearedIdx, newCombo)
+        .then(() => {
+          if (!mountedRef.current) return;
+          const cur = gameRef.current;
+          const fallen = phaseGravity(cur.board, cur.tokenTypes);
+          safeSetGame((g) => ({
+            ...g,
+            board: fallen,
+            animation: { phase: 'falling', swapping: [], clearing: [], cascade: g.animation.cascade }
+          }));
+          // 引擎下落动画
+          return boardRef.current?.playFall(fallen);
+        })
+        .then(() => {
+          if (!mountedRef.current) return;
+          const cur2 = gameRef.current;
+          if (hasMatches(cur2.board)) {
+            runCascade(consumeMove);
+          } else {
+            settle(cur2, consumeMove);
+          }
+        });
+    },
+    [safeSetGame, settle]
+  );
 
   /** 交换两格（阶段化） */
   const handleSwap = useCallback(
@@ -169,13 +169,13 @@ export default function App() {
           ...g,
           animation: { phase: 'swapfail', swapping: [from, to], clearing: [], cascade: 0 }
         }));
-        later(() => {
+        boardRef.current?.playSwapFail(from, to).then(() => {
           safeSetGame((g) =>
             g.animation.phase === 'swapfail'
               ? { ...g, animation: IDLE_ANIM }
               : g
           );
-        }, 420);
+        });
         return;
       }
 
@@ -189,10 +189,18 @@ export default function App() {
         animation: { phase: 'swapping', swapping: [from, to], clearing: [], cascade: 0 }
       }));
 
-      // 交换完成 → 进入消除/下落/连消（消耗 1 步）
-      later(() => runCascade(true), SWAP_MS);
+      // 引擎交换动画 → 进入消除/下落/连消（消耗 1 步）
+      boardRef.current
+        ?.playSwap(from, to)
+        .then(() => {
+          if (mountedRef.current) runCascade(true);
+        })
+        .catch(() => {
+          /* 引擎未就绪时直接走逻辑 */
+          if (mountedRef.current) runCascade(true);
+        });
     },
-    [later, runCascade, safeSetGame]
+    [runCascade, safeSetGame]
   );
 
   /** 使用道具 */
@@ -224,6 +232,7 @@ export default function App() {
           busy: false,
           animation: IDLE_ANIM
         }));
+        boardRef.current?.syncBoard(result.board as GameState['board']);
         return;
       }
       // resell：洗牌
@@ -234,6 +243,7 @@ export default function App() {
         busy: false,
         animation: IDLE_ANIM
       }));
+      boardRef.current?.syncBoard(result.board as GameState['board']);
     },
     [powerUpHaptic, playSound, safeSetGame]
   );
@@ -264,26 +274,35 @@ export default function App() {
         animation: { phase: 'clearing', swapping: [], clearing: clearedIdx, cascade: 0 }
       }));
 
-      // 3×3 消除动画 → 重力下落 → 连消（道具不消耗步数）
-      later(() => {
-        const cur = gameRef.current;
-        const fallen = phaseGravity(cur.board, cur.tokenTypes);
-        safeSetGame((g) => ({
-          ...g,
-          board: fallen,
-          animation: { phase: 'falling', swapping: [], clearing: [], cascade: 0 }
-        }));
-        later(() => {
+      // 引擎 3×3 高亮 + 消除 → 重力下落 → 连消（道具不消耗步数）
+      boardRef.current
+        ?.pulseCells(clearedIdx)
+        .then(() => {
+          if (!mountedRef.current) return undefined;
+          return boardRef.current?.playClear(clearedIdx, 0);
+        })
+        .then(() => {
+          if (!mountedRef.current) return undefined;
+          const cur = gameRef.current;
+          const fallen = phaseGravity(cur.board, cur.tokenTypes);
+          safeSetGame((g) => ({
+            ...g,
+            board: fallen,
+            animation: { phase: 'falling', swapping: [], clearing: [], cascade: 0 }
+          }));
+          return boardRef.current?.playFall(fallen);
+        })
+        .then(() => {
+          if (!mountedRef.current) return;
           const cur2 = gameRef.current;
           if (hasMatches(cur2.board)) {
             runCascade(false);
           } else {
             settle(cur2, false);
           }
-        }, FALL_MS);
-      }, CLEAR_MS);
+        });
     },
-    [later, phaseGravity, powerUpHaptic, playSound, runCascade, safeSetGame, settle, hasMatches]
+    [powerUpHaptic, playSound, runCascade, safeSetGame, settle]
   );
 
   /** 结算按钮 */
@@ -297,7 +316,8 @@ export default function App() {
 
   /** 重新开始 */
   const handleRestart = useCallback(() => {
-    setGame(createInitialState());
+    const fresh = createInitialState();
+    setGame(fresh);
     setPowerUpUses({
       greenChannel: POWER_UPS.greenChannel.uses,
       markup: POWER_UPS.markup.uses,
@@ -306,12 +326,48 @@ export default function App() {
     setActivePowerUp(null);
     setModalOpen(false);
     setCheckoutMode(false);
+    // 引擎重建棋盘（下一渲染帧，确保场景就绪）
+    requestAnimationFrame(() => {
+      boardRef.current?.syncBoard(fresh.board);
+    });
   }, []);
 
   /** 状态锁定：非 playing 时关闭道具 */
   useEffect(() => {
     if (game.status !== 'playing') setActivePowerUp(null);
   }, [game.status]);
+
+  /** 点按处理：绿色通道模式 → 指定 3×3；普通模式 → 尝试与右/下邻居交换 */
+  const handleTap = useCallback(
+    (index: number) => {
+      if (activePowerUp === 'greenChannel') {
+        handleGreenChannelTarget(index);
+        return;
+      }
+      const prev = gameRef.current;
+      if (prev.busy || prev.status !== 'playing') return;
+      const from = index;
+      const candidates = [from + 1, from + game.cols].filter(
+        (i) =>
+          i >= 0 &&
+          i < game.rows * game.cols &&
+          Math.abs(Math.floor(i / game.cols) - Math.floor(from / game.cols)) +
+            Math.abs((i % game.cols) - (from % game.cols)) === 1
+      );
+      const target = candidates[0];
+      if (target !== undefined) {
+        tapHaptic();
+        handleSwap(from, target);
+      }
+    },
+    [activePowerUp, game.cols, game.rows, handleGreenChannelTarget, handleSwap]
+  );
+
+  /** 初始棋盘同步：引擎就绪后渲染第一帧 */
+  useEffect(() => {
+    boardRef.current?.syncBoard(game.board);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="flex min-h-screen flex-col bg-ink text-ivory">
@@ -327,16 +383,15 @@ export default function App() {
           <Header moves={game.moves} score={game.score} />
         </div>
 
-        {/* 棋盘 */}
+        {/* 棋盘（Phaser 引擎） */}
         <main className="flex flex-1 flex-col px-3">
-          <GameBoard
-            board={game.board}
-            busy={game.busy}
+          <GameBoardBridge
+            ref={boardRef}
+            rows={game.rows}
+            cols={game.cols}
             canSelect={game.status === 'playing' && !game.busy}
             onSwap={handleSwap}
-            greenChannelActive={activePowerUp === 'greenChannel'}
-            onGreenChannel={handleGreenChannelTarget}
-            animation={game.animation}
+            onTap={handleTap}
           />
 
           {/* Green Channel 提示 */}
