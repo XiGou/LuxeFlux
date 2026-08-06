@@ -48,6 +48,11 @@ const GameBoardBridge = forwardRef<GameBoardHandle, GameBoardBridgeProps>(
       const el = containerRef.current;
       if (!el) return;
 
+      // 重新标记存活（StrictMode 下 effect 会 挂载→卸载→重挂载，
+      // 卸载阶段的 cleanup 会把 aliveRef 置为 false，这里必须重新置 true，
+      // 否则 ready() 的轮询会因 alive=false 提前放弃，棋盘永远不渲染）
+      aliveRef.current = true;
+
       // 写入场景配置（Phaser 场景 init 时读取）
       SCENE_CONFIG.current = {
         rows,
