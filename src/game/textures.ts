@@ -2,8 +2,8 @@
  * Phaser 引擎纹理生成
  *
  * 从高清雪碧图（public/sprites/luxe_flux_v2_12tiles_sprite.png）切割 12 个品牌 tile
- * 作为 Phaser 纹理（384x512，4 行 x 3 列，每 tile 128x128，透明背景）。
- * 雪碧图已通过 EDSR x4 超分辨率重建，logo 高清清晰。
+ * 作为 Phaser 纹理（768x1024，4 行 x 3 列，每 tile 256x256，透明背景）。
+ * 雪碧图由 8K 源图切割（9 品牌）+ 程序化补齐（3 品牌）合成，logo 高清清晰。
  *
  * 加载策略：模块级缓存一张 HTMLImageElement，全局唯一（兼容 React StrictMode
  * 双挂载与 Capacitor file:// 等复杂场景）。场景 create() 时确保雪碧图就绪后
@@ -15,7 +15,7 @@ import type { TokenType } from '../types/game';
 export const SPRITE_URL = 'sprites/luxe_flux_v2_12tiles_sprite.png';
 
 /** 雪碧图切割配置（与 luxe_flux_v2_12tiles.json 一致） */
-export const TILE_SIZE = 128;
+export const TILE_SIZE = 256;
 export const SPRITE_COLS = 3;
 
 /** 雪碧图纹理 key */
