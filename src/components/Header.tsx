@@ -27,10 +27,10 @@ export default function Header({ moves, score }: HeaderProps) {
 
       {/* Logo */}
       <div className="flex flex-col items-center">
-        <h1 className="font-display text-xl font-semibold tracking-[0.18em] bg-gold-text bg-clip-text text-transparent sm:text-2xl">
+        <h1 className="font-body text-xl font-black uppercase tracking-[0.22em] text-ivory sm:text-2xl">
           LUXE FLUX
         </h1>
-        <span className="font-body text-[9px] uppercase tracking-[0.32em] text-gold/60">
+        <span className="mt-0.5 font-body text-[9px] uppercase tracking-[0.32em] text-gold/60">
           The $29,980 Match-3
         </span>
       </div>
