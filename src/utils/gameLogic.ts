@@ -446,18 +446,24 @@ export const POWER_UPS = {
   greenChannel: {
     name: '绿色通道',
     tagline: 'Green Channel · 指定消除 3×3',
+    description:
+      '点选棋盘任意格子作为中心，立即消除其周围 3×3 范围内的全部符号。适合精准清除碍事品牌，为后续连消扫清障碍；不消耗步数。',
     icon: 'layoutGrid' as const,
     uses: 2
   },
   markup: {
     name: '溢价转售',
     tagline: 'Markup Resale · 随机升级限量版',
+    description:
+      '随机选中盘面中的一种品牌，将其所有普通符号升级为「限量版」。消除限量版符号可获得 3 倍积分，让下一笔账单直接翻倍上涨。',
     icon: 'gem' as const,
     uses: 1
   },
   resell: {
     name: '二手同款',
     tagline: 'Resell Market · 重新打乱盘面',
+    description:
+      '将整个棋盘重新洗牌打乱，保证不会出现三连且一定有可行解。当前局面走投无路时的“二手市场换新”救命牌，帮您扭转败局。',
     icon: 'shuffle' as const,
     uses: 1
   }

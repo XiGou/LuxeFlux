@@ -44,6 +44,8 @@ export interface PowerUp {
   type: PowerUpType;
   name: string;
   tagline: string;
+  /** 详细玩法介绍（点击道具后的大字说明区展示） */
+  description: string;
   icon: 'layoutGrid' | 'gem' | 'shuffle';
   /** 每局可用次数 */
   uses: number;
