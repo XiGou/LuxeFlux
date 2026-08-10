@@ -43,7 +43,7 @@ export function tokenTextureKey(type: TokenType): string {
 let spritePromise: Promise<HTMLImageElement> | null = null;
 
 /** 加载雪碧图为 HTMLImageElement（模块级缓存，幂等） */
-function loadSpriteImage(): Promise<HTMLImageElement> {
+export function loadTileImage(): Promise<HTMLImageElement> {
   if (spritePromise) return spritePromise;
   spritePromise = new Promise((resolve, reject) => {
     const img = new Image();
@@ -62,7 +62,7 @@ function loadSpriteImage(): Promise<HTMLImageElement> {
  * 返回 Promise，resolve 后即可使用 token-* 纹理。
  */
 export function ensureSpriteReady(scene: Phaser.Scene): Promise<void> {
-  return loadSpriteImage().then((img) => {
+  return loadTileImage().then((img) => {
     // 场景可能已被销毁（StrictMode 双挂载），此时跳过注册
     try {
       const game = (scene.sys as { game?: Phaser.Game | null } | null)?.game;

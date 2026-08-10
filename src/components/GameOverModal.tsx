@@ -12,7 +12,7 @@ import { Share2, RotateCcw, Crown, Wallet, ShoppingBag } from 'lucide-react';
 import { verdict, toBrandStatsList } from '../utils/gameLogic';
 import { gameOverHaptic } from '../utils/soundAndHaptics';
 import type { TokenType } from '../types/game';
-import BrandMark from './BrandMark';
+import BrandTile from './BrandTile';
 
 interface GameOverModalProps {
   open: boolean;
@@ -141,8 +141,8 @@ export default function GameOverModal({
                     key={s.type}
                     className="flex items-center gap-3 rounded-xl bg-ink/40 px-3 py-2"
                   >
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gold/20 bg-black/40">
-                      <BrandMark type={s.type} className="h-7 w-7" />
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gold/20 bg-black/40">
+                      <BrandTile type={s.type} className="h-7 w-7" />
                     </span>
                     <span className="flex-1 font-body text-sm font-semibold text-ivory/90">
                       {s.name}
