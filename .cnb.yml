@@ -16,7 +16,7 @@
 main:
   push:
     - name: sync to github
-      imports: https://cnb.cool/<your-org>/<secret-repo>/-/blob/main/secret-env.yml
+      imports: https://cnb.cool/gotham-xigou/secret-env/-/blob/main/secret-env.yml
       stages:
         - name: sync to github
           image: tencentcom/git-sync
