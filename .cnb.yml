@@ -21,7 +21,7 @@ main:
         - name: sync to github
           image: tencentcom/git-sync
           settings:
-            target_url: https://github.com/<your-github-username>/LuxeFlux.git
+            target_url: https://github.com/${GIT_USERNAME}/LuxeFlux.git
             auth_type: https
             username: ${GIT_USERNAME}
             password: ${GIT_ACCESS_TOKEN}
