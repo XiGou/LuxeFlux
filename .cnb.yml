@@ -1,0 +1,30 @@
+# 将 CNB 仓库自动同步到 GitHub
+# 触发方式：每次 push 到 CNB 时，自动将代码推送到 GitHub
+#
+# 前提准备：
+#   1. 在 GitHub 上建好同名仓库 LuxeFlux
+#   2. 配置 GitHub PAT（见下方注释）
+#   3. 在 CNB 建立"密钥仓库"，存放 GIT_USERNAME / GIT_ACCESS_TOKEN
+#
+# 密钥仓库引用（把下面 <your-org> / <secret-repo> 替换为你的实际仓库）：
+#   https://cnb.cool/<your-org>/<secret-repo>/-/blob/main/secret-env.yml
+#
+# secret-env.yml 内容示例：
+#   GIT_USERNAME: <你的GitHub用户名>
+#   GIT_ACCESS_TOKEN: <你的GitHub PAT>
+
+main:
+  push:
+    - name: sync to github
+      imports: https://cnb.cool/<your-org>/<secret-repo>/-/blob/main/secret-env.yml
+      stages:
+        - name: sync to github
+          image: tencentcom/git-sync
+          settings:
+            target_url: https://github.com/<your-github-username>/LuxeFlux.git
+            auth_type: https
+            username: ${GIT_USERNAME}
+            password: ${GIT_ACCESS_TOKEN}
+            branch: main              # 只同步 main 分支；不填则同步所有分支
+            # push_tags: true         # 可选：同时推送 tag
+            # force: false            # 可选：强制推送（rebase 模式默认 true）
