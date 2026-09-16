@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { ShoppingCart, RotateCcw, Sparkles } from 'lucide-react';
-import type { GameState, PowerUpType } from './types/game';
+import type { Cell, GameState, PowerUpType } from './types/game';
 import {
   createInitialState,
   phaseSwap,
@@ -20,6 +20,7 @@ import {
   phaseGravity,
   hasMatches,
   mergeBrandStats,
+  toMatchEvent,
   useGreenChannel,
   useMarkup,
   useResell,
@@ -111,6 +112,7 @@ export default function App() {
 
       const newCombo = prev.animation.cascade + 1;
       const newScore = prev.score + evt.points;
+      const newItems = prev.items + evt.units;
       const newStats = mergeBrandStats(prev.brandStats, [evt]);
       const clearedIdx: number[] = [];
       for (let i = 0; i < afterClear.length; i++) {
@@ -121,6 +123,7 @@ export default function App() {
         ...g,
         board: afterClear,
         score: newScore,
+        items: newItems,
         maxCombo: Math.max(g.maxCombo, newCombo),
         brandStats: newStats,
         animation: { phase: 'clearing', swapping: [], clearing: clearedIdx, cascade: newCombo }
@@ -262,6 +265,9 @@ export default function App() {
       for (let i = 0; i < result.board.length; i++) {
         if (result.board[i] === null && prev.board[i] !== null) clearedIdx.push(i);
       }
+      // 整柜打包：按件数 × 统一单价入账（限量版买一配一计 2 件）
+      const bundled = clearedIdx.map((i) => prev.board[i]).filter(Boolean) as Cell[];
+      const bundleEvt = toMatchEvent(bundled, bundled.length, 1);
 
       setActivePowerUp(null);
       setPowerUpUses((u) => ({ ...u, greenChannel: u.greenChannel - 1 }));
@@ -271,6 +277,9 @@ export default function App() {
       safeSetGame((g) => ({
         ...g,
         board: result.board as GameState['board'],
+        score: g.score + bundleEvt.points,
+        items: g.items + bundleEvt.units,
+        brandStats: mergeBrandStats(g.brandStats, [bundleEvt]),
         busy: true,
         animation: { phase: 'clearing', swapping: [], clearing: clearedIdx, cascade: 0 }
       }));
@@ -381,7 +390,7 @@ export default function App() {
       <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col">
         {/* 顶栏 + 安全区域 */}
         <div className="pt-[max(env(safe-area-inset-top),0.75rem)]">
-          <Header moves={game.moves} score={game.score} />
+          <Header moves={game.moves} score={game.score} items={game.items} />
         </div>
 
         {/* 棋盘（Phaser 引擎） */}
@@ -432,7 +441,7 @@ export default function App() {
               className="flex flex-[1.6] items-center justify-center gap-2 rounded-xl bg-gold-gradient px-4 py-3.5 font-body text-sm font-bold text-ink shadow-gold-glow transition hover:brightness-110 active:scale-95 disabled:opacity-40"
             >
               <ShoppingCart className="h-4 w-4" strokeWidth={2.2} />
-              结算 · ${game.score.toLocaleString()}
+              结算 · {game.items} 件 / ${game.score.toLocaleString()}
             </button>
           </div>
         </footer>
@@ -442,6 +451,7 @@ export default function App() {
       <GameOverModal
         open={modalOpen}
         score={game.score}
+        items={game.items}
         maxCombo={game.maxCombo}
         isCheckout={checkoutMode}
         brandStats={game.brandStats}

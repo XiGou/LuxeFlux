@@ -54,6 +54,9 @@ export default defineConfig({
   },
   server: {
     host: true,
-    port: 5173
+    port: 5173,
+    allowedHosts: [
+      't86xn79nv7-5173.cnb.run'
+    ]
   }
 });

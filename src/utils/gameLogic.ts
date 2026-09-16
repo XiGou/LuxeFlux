@@ -7,9 +7,13 @@
  *  3. 检查 / 交换相邻格子（交换后需形成匹配，否则回退）
  *  4. 检测 Match-3 / Match-4 / Match-5 并生成爆破符号与全柜同清炸弹
  *  5. 重力下落 + 顶部补充（下落格子保留 id，供 Framer Motion layout 动画）
- *  6. 道具逻辑：绿色通道 / 溢价转售 / 二手同款
+ *  6. 道具逻辑：绿色通道 / 限量配货 / 二手同款
  *
- * 计分: 每消除 1 个符号 +$1,980；4 连消 ×2、5 连消 ×3、炸弹附加。
+ * 采购设定：消除 = 买下该品牌的一件单品。
+ *  - 全场统一单价 $1,980 / 件（不因品牌、连消、爆破而改变价格）
+ *  - 最终账单 = 采购件数 × 单价
+ *  - 连消 / 行爆破 / 全柜同清炸弹的价值体现在「一次买下更多件」
+ *  - 限量版按专柜「买一配一」潜规则，成交时计 2 件
  * 棋盘始终保持 rows×cols 个槽位，消除阶段以 null 标记空位，重力后补满。
  */
 import type { Cell, TokenType, GameState, MatchEvent, PowerUpResult, Board, BrandStat } from '../types/game';
@@ -17,7 +21,10 @@ import { sampleTokenTypes, BRAND_NAMES, TOKEN_POOL } from './brands';
 
 export const ROWS = 8;
 export const COLS = 8;
-export const BASE_POINTS = 1980; // $1,980 / 个
+/** 全场统一单价：$1,980 / 件（经典款均价，品牌之间不区分价格） */
+export const UNIT_PRICE = 1980;
+/** 限量版成交件数：买一配一 = 2 件 */
+export const LIMITED_UNITS = 2;
 export const START_MOVES = 15;
 
 /** 占位素材符号集（后续替换为真实品牌 Logo 素材）——默认池全部品牌 */
@@ -44,6 +51,32 @@ export function rowOf(i: number): number {
 
 export function colOf(i: number): number {
   return i % COLS;
+}
+
+/* ------------------------------------------------------------------ */
+/* 采购计分：统一单价 × 件数                                            */
+/* ------------------------------------------------------------------ */
+
+/** 单个格子成交计入的件数（限量版「买一配一」计 2 件） */
+export function cellUnits(cell: Cell | null): number {
+  if (!cell) return 0;
+  return cell.limited ? LIMITED_UNITS : 1;
+}
+
+/** 一批格子成交的总件数 */
+export function unitsOf(cells: (Cell | null)[]): number {
+  return cells.reduce((sum, c) => sum + cellUnits(c), 0);
+}
+
+/** 件数 → 金额（全场统一单价，价格不因品牌/连消/爆破而不同） */
+export function priceOf(units: number): number {
+  return units * UNIT_PRICE;
+}
+
+/** 把一批成交格子封装为 MatchEvent（消除、道具通用） */
+export function toMatchEvent(cells: Cell[], matched: number, combo: number): MatchEvent {
+  const units = unitsOf(cells);
+  return { cells, matched, units, points: priceOf(units), combo };
 }
 
 /** 随机符号（可排除指定类型） */
@@ -294,8 +327,8 @@ function normalizeBlast(board: Cell[]): Cell[] {
  * 执行一轮消除：
  *  1. 找出所有匹配
  *  2. 升级生成爆破符号 / 炸弹
- *  3. 展开爆破范围
- *  4. 计分（Match-4 ×2、Match-5 ×3、炸弹 +$2,980、限量版 ×3）
+ *  3. 展开爆破范围（清掉更多格子 = 一次买下更多件）
+ *  4. 计分：件数 × 统一单价（不设任何价格倍率）
  *  5. 将待消除格子置为 null（保留槽位，交由 gravity 填补）
  * 返回 [新棋盘(含空位), MatchEvent]
  */
@@ -312,43 +345,18 @@ export function clearMatches(board: Board): [Board, MatchEvent] {
     for (const s of spread) cleared.add(s);
   }
 
-  // 计分
-  const hasBomb = matches.some((seg) => upgraded[seg[Math.floor(seg.length / 2)]]?.bomb);
-  let points = 0;
-  for (const seg of matches) {
-    const mult = seg.length === 5 ? 3 : seg.length === 4 ? 2 : 1;
-    points += seg.length * BASE_POINTS * mult;
-  }
-  if (hasBomb) points += 2980; // 全柜同清炸弹红利
-
-  // 爆破波及 + 限量版加价
-  const extra = cleared.size - baseClear.size;
-  if (extra > 0) points += extra * 500;
-  for (const i of cleared) {
-    if (board[i]?.limited) points += BASE_POINTS * 2; // 限量版 ×3 总计
-  }
-
   // 标记消除（保留槽位 = null）
-  const clearedIds = new Set<string>();
+  const clearedCells: Cell[] = [];
   const newBoard = normalizeBlast(upgraded as Cell[]).map((cell, i) => {
     if (cleared.has(i)) {
-      if (cell) clearedIds.add(cell.id);
+      if (board[i]) clearedCells.push(board[i] as Cell);
       return null;
     }
     return cell;
   }) as Board;
 
-  return [
-    newBoard,
-    {
-      cells: Array.from(clearedIds)
-        .map((id) => board.find((c) => c?.id === id))
-        .filter(Boolean) as Cell[],
-      matched: cleared.size,
-      points,
-      combo: matches.length
-    }
-  ];
+  // 计分：统一单价 × 件数（连消 / 爆破 / 炸弹只增加件数，不改变价格）
+  return [newBoard, toMatchEvent(clearedCells, cleared.size, matches.length)];
 }
 
 /* ------------------------------------------------------------------ */
@@ -445,17 +453,17 @@ export function shuffleBoard(board: Board): Cell[] {
 export const POWER_UPS = {
   greenChannel: {
     name: '绿色通道',
-    tagline: 'Green Channel · 指定消除 3×3',
+    tagline: 'Green Channel · 整柜打包 3×3',
     description:
-      '点选棋盘任意格子作为中心，立即消除其周围 3×3 范围内的全部符号。适合精准清除碍事品牌，为后续连消扫清障碍；不消耗步数。',
+      '点选棋盘任意格子作为中心，SA 直接把其周围 3×3 的全部单品打包卖给你（最多 9 件，按 $1,980 / 件入账）。适合精准清空碍事品牌、为后续连消铺路；不消耗步数。',
     icon: 'layoutGrid' as const,
     uses: 2
   },
   markup: {
-    name: '溢价转售',
-    tagline: 'Markup Resale · 随机升级限量版',
+    name: '限量配货',
+    tagline: 'Allocation · 随机升级限量版',
     description:
-      '随机选中盘面中的一种品牌，将其所有普通符号升级为「限量版」。消除限量版符号可获得 3 倍积分，让下一笔账单直接翻倍上涨。',
+      '随机选中盘面中的一种品牌，将其所有普通单品升级为「限量版」。全场统一单价，限量版并不加价 —— 但按专柜「买一配一」的潜规则，成交时一次性计入 2 件。',
     icon: 'gem' as const,
     uses: 1
   },
@@ -487,11 +495,12 @@ export function useGreenChannel(board: Board, centerIndex: number): PowerUpResul
   const cells = clearedIdx.map((i) => board[i]).filter(Boolean) as Cell[];
   for (const i of clearedIdx) next[i] = null;
 
-  const points = cells.length * BASE_POINTS;
+  // 打包清仓：按件数 × 统一单价入账（限量版计 2 件）
+  const points = priceOf(unitsOf(cells));
   return { board: next, score: points, moves: 0, cleared: cells, cascades: 0 };
 }
 
-/** 道具 2：溢价转售 — 随机将一种普通符号升级为「限量版」(消除 ×3) */
+/** 道具 2：限量配货 — 随机将一种普通符号升级为「限量版」（成交计 2 件） */
 export function useMarkup(board: Board): PowerUpResult {
   const cells = board.filter((c): c is Cell => c !== null);
   const present = Array.from(new Set(cells.map((c) => c.type)));
@@ -599,6 +608,7 @@ export function createInitialState(): GameState {
     cols: COLS,
     moves: START_MOVES,
     score: 0,
+    items: 0,
     status: 'playing',
     maxCombo: 0,
     busy: false,
@@ -615,7 +625,11 @@ export function emptyBrandStats(tokenTypes: TokenType[]): Record<TokenType, numb
   return stats;
 }
 
-/** 累加消除事件的品牌统计（防御性：支持不在初始集合中的新品牌） */
+/**
+ * 累加消除事件的品牌采购件数（防御性：支持不在初始集合中的新品牌）
+ * 件数与金额同源：限量版「买一配一」计 2 件，因此
+ * 「各品牌件数之和 × UNIT_PRICE」恒等于最终消费总额。
+ */
 export function mergeBrandStats(
   stats: Record<TokenType, number>,
   events: MatchEvent[]
@@ -624,17 +638,20 @@ export function mergeBrandStats(
   for (const evt of events) {
     for (const cell of evt.cells) {
       const type = cell.brand ?? cell.type;
-      next[type] = (next[type] ?? 0) + 1;
+      next[type] = (next[type] ?? 0) + cellUnits(cell);
     }
   }
   return next;
 }
 
-/** 将统计对象转为排序列表（数量降序，供结算展示） */
+/** 将统计对象转为排序列表（件数降序，供结算展示） */
 export function toBrandStatsList(stats: Record<TokenType, number>): BrandStat[] {
   return (Object.keys(stats) as TokenType[])
     .filter((t) => (stats[t] ?? 0) > 0)
-    .map((t) => ({ type: t, name: BRAND_NAMES[t], count: stats[t] ?? 0 }))
+    .map((t) => {
+      const count = stats[t] ?? 0;
+      return { type: t, name: BRAND_NAMES[t], count, subtotal: priceOf(count) };
+    })
     .sort((a, b) => b.count - a.count);
 }
 
@@ -642,28 +659,39 @@ export function toBrandStatsList(stats: Record<TokenType, number>): BrandStat[] 
 /* 结算评语                                                            */
 /* ------------------------------------------------------------------ */
 
-export function verdict(score: number): {
+/** 结算评语档位（按采购件数判定，件数 × 单价即消费总额） */
+const VERDICT_TIERS = {
+  /** 低于此件数：SA 不伺候 */
+  waitlist: 60,
+  /** 达到此件数：VIP 待遇 */
+  vip: 120
+} as const;
+
+export function verdict(items: number): {
   tier: 'cold' | 'waitlist' | 'vip';
   title: string;
   message: string;
 } {
-  if (score < 10000) {
+  const amount = priceOf(items);
+  const money = `$${amount.toLocaleString()}`;
+
+  if (items < VERDICT_TIERS.waitlist) {
     return {
       tier: 'cold',
       title: '本店不单卖配件',
-      message: 'SA 对你冷笑了下：「抱歉，本店不单卖同款配件。」'
+      message: `您只买了 ${items} 件（${money}）。SA 对你冷笑了下：「抱歉，本店不单卖同款配件。」`
     };
   }
-  if (score <= 30000) {
+  if (items < VERDICT_TIERS.vip) {
     return {
       tier: 'waitlist',
       title: '恭喜！您已进入等候名单',
-      message: `恭喜！您已成功入手 $${score.toLocaleString()} 的经典款，获得等候 Birkin 25 的名额（预计等待 3 年）。`
+      message: `恭喜！您已成功入手 ${items} 件经典款（${money}），获得等候 Birkin 25 的名额（预计等待 3 年）。`
     };
   }
   return {
     tier: 'vip',
     title: '尊贵的 VIP',
-    message: `尊贵的 VIP，品牌 CEO 亲自为您开门！您已击败全球 99% 的消费主义受害者！（消费总额 $${score.toLocaleString()}）`
+    message: `尊贵的 VIP，品牌 CEO 亲自为您开门！您已买下 ${items} 件（${money}），击败全球 99% 的消费主义受害者！`
   };
 }

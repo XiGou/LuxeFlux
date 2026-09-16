@@ -1,15 +1,17 @@
 /**
  * Header — 奢华黑金顶栏
- * 左: 步数 | 中: Logo | 右: 消费额 (Prespend)
+ * 左: 步数 | 中: Logo | 右: 采购件数 + 消费额 (Prespend)
  */
-import { Footprints } from 'lucide-react';
+import { Footprints, ShoppingBag } from 'lucide-react';
 
 interface HeaderProps {
   moves: number;
   score: number;
+  /** 已采购件数（金额 = 件数 × 统一单价） */
+  items: number;
 }
 
-export default function Header({ moves, score }: HeaderProps) {
+export default function Header({ moves, score, items }: HeaderProps) {
   return (
     <header className="flex items-center justify-between gap-2 px-4 pb-2 pt-1">
       {/* 步数 */}
@@ -35,7 +37,7 @@ export default function Header({ moves, score }: HeaderProps) {
         </span>
       </div>
 
-      {/* 消费额 */}
+      {/* 采购件数 + 消费额 */}
       <div className="flex min-w-[96px] flex-col items-end">
         <span className="font-body text-[10px] uppercase tracking-[0.2em] text-ivory/40">
           Prespend
@@ -44,6 +46,12 @@ export default function Header({ moves, score }: HeaderProps) {
           <span className="font-body text-[11px] font-semibold text-gold-bright">$</span>
           <span className="font-body text-xl font-bold tabular-nums text-gold drop-shadow-[0_0_10px_rgba(212,175,55,0.45)]">
             {score.toLocaleString()}
+          </span>
+        </div>
+        <div className="mt-0.5 flex items-center gap-1 text-ivory/45">
+          <ShoppingBag className="h-3 w-3" strokeWidth={2} />
+          <span className="font-body text-[10px] font-semibold tabular-nums">
+            {items} 件已购
           </span>
         </div>
       </div>

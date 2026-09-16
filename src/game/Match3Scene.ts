@@ -13,10 +13,10 @@ import Phaser from 'phaser';
 import type { Board, Cell } from '../types/game';
 import { ROWS, COLS } from '../utils/gameLogic';
 import {
-  registerTokenTextures,
+  ensureTokenTexture,
   registerSparkTexture,
-  tokenTextureKey,
-  loadSpriteSheet
+  loadSpriteSheet,
+  TILE_SIZE
 } from './textures';
 
 export interface Match3SceneConfig {
@@ -28,6 +28,12 @@ export interface Match3SceneConfig {
 
 /** 场景配置持有者：GameBoardBridge 在创建 Phaser.Game 前写入 */
 export const SCENE_CONFIG: { current: Match3SceneConfig | null } = { current: null };
+
+/** 场景就绪回调（引擎 + 品牌素材就绪后触发，用于关闭 loading） */
+export const SCENE_READY: { callbacks: Set<() => void>; done: boolean } = {
+  callbacks: new Set(),
+  done: false
+};
 
 /** 每个方块的运行期展示对象 */
 interface TokenView {
@@ -59,6 +65,8 @@ export default class Match3Scene extends Phaser.Scene {
   private cellSize = 0;
   private boardX = 0;
   private boardY = 0;
+  /** 当前纹理尺寸（设备像素）：与 tile 实际显示尺寸一致，保证 1:1 采样不模糊 */
+  private textureSize = 128;
   private backing!: Phaser.GameObjects.Graphics;
   private emitter!: Phaser.GameObjects.Particles.ParticleEmitter;
 
@@ -81,6 +89,8 @@ export default class Match3Scene extends Phaser.Scene {
   }
 
   create(): void {
+    // 场景（重）创建：重置就绪状态（回调由等待方注册，不能在此清空）
+    SCENE_READY.done = false;
     this.cellSize = 0;
     this.boardX = 0;
     this.boardY = 0;
@@ -96,12 +106,13 @@ export default class Match3Scene extends Phaser.Scene {
     // 启动雪碧图加载：就绪后若棋盘已同步，则重绘一次保证 tile 显示
     loadSpriteSheet(this, () => {
       if (this.board.length > 0) {
-        // 雪碧图刚就绪：旧 sprite 可能用了缺失纹理，强制重建所有视图
+        // 雪碧图刚就绪：旧 sprite 可能用了占位纹理，强制重建所有视图
         for (const view of Array.from(this.views.values())) this.destroyView(view);
         this.views.clear();
         this.images = [];
         this.syncBoard(this.board);
       }
+      this.markReady();
     });
 
     // 金属底盘（圆角矩形）
@@ -244,6 +255,16 @@ export default class Match3Scene extends Phaser.Scene {
     this.cellSize = Math.min(width / this.cols, height / this.rows);
     this.boardX = (width - this.cellSize * this.cols) / 2;
     this.boardY = (height - this.cellSize * this.rows) / 2;
+    this.textureSize = this.idealTextureSize();
+  }
+
+  /**
+   * 纹理目标尺寸（设备像素）：取略大于实际显示尺寸且为 8 的倍数，
+   * 使采样比例接近 1:1（宁可轻微缩小，也不要放大导致糊）。
+   */
+  private idealTextureSize(): number {
+    const display = Math.max(32, Math.ceil(this.cellSize * CELL_RATIO));
+    return Phaser.Math.Clamp(Math.ceil(display / 8) * 8, 32, TILE_SIZE);
   }
 
   private colCenter(c: number): number {
@@ -290,10 +311,8 @@ export default class Match3Scene extends Phaser.Scene {
   }
 
   private createSprite(cell: Cell, i: number): Phaser.GameObjects.Image {
-    const key = tokenTextureKey(cell.type);
-    if (!this.textures.exists(key)) {
-      registerTokenTextures(this, [cell.type]);
-    }
+    // 按设备像素取纹理：与显示尺寸 1:1，缩放过滤不再产生模糊 / 白边
+    const key = ensureTokenTexture(this, cell.type, this.textureSize);
     const size = Math.floor(this.cellSize * CELL_RATIO);
     const img = this.add
       .image(this.colCenter(i % this.cols), this.rowCenter(Math.floor(i / this.cols)), key)
@@ -326,10 +345,6 @@ export default class Match3Scene extends Phaser.Scene {
     this.tweens.killAll();
     if (this.cellSize <= 0) this.computeMetrics();
     this.board = board;
-
-    // 确保所有品牌纹理已注册
-    const types = Array.from(new Set(board.filter((c): c is Cell => c !== null).map((c) => c.type)));
-    registerTokenTextures(this, types);
 
     const keep = new Set<string>();
     for (let i = 0; i < board.length; i++) {
@@ -654,12 +669,17 @@ export default class Match3Scene extends Phaser.Scene {
   }
 
   private handleResize = (): void => {
+    const prevTextureSize = this.textureSize;
     this.computeMetrics();
     this.redrawBacking();
     for (const view of this.views.values()) {
       const i = this.indexOfView(view.sprite);
       if (i < 0) continue;
       const size = Math.floor(this.cellSize * CELL_RATIO);
+      // 纹理尺寸随显示尺寸变化 → 换用新尺寸纹理，始终保持 1:1 采样
+      if (this.textureSize !== prevTextureSize) {
+        view.sprite.setTexture(ensureTokenTexture(this, view.cell.type, this.textureSize));
+      }
       view.sprite.setDisplaySize(size, size);
       // 尺寸变化后基准缩放也随之变化，需同步记录
       this.baseScales.set(view.sprite, view.sprite.scaleX);
@@ -668,6 +688,14 @@ export default class Match3Scene extends Phaser.Scene {
     }
   };
 
+  /** 标记场景就绪（引擎 + 素材），通知等待方关闭 loading */
+  private markReady(): void {
+    if (SCENE_READY.done) return;
+    SCENE_READY.done = true;
+    for (const cb of SCENE_READY.callbacks) cb();
+    SCENE_READY.callbacks.clear();
+  }
+
   /** 组件卸载时清理 */
   destroyAll(): void {
     this.tweens.killAll();
@@ -675,5 +703,6 @@ export default class Match3Scene extends Phaser.Scene {
     this.images = [];
     this.board = [];
     INTERACTIVE.value = false;
+    SCENE_READY.done = false;
   }
 }

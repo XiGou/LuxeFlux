@@ -9,7 +9,7 @@ import { useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { Share2, RotateCcw, Crown, Wallet, ShoppingBag } from 'lucide-react';
-import { verdict, toBrandStatsList } from '../utils/gameLogic';
+import { verdict, toBrandStatsList, UNIT_PRICE } from '../utils/gameLogic';
 import { gameOverHaptic } from '../utils/soundAndHaptics';
 import type { TokenType } from '../types/game';
 import BrandTile from './BrandTile';
@@ -17,6 +17,8 @@ import BrandTile from './BrandTile';
 interface GameOverModalProps {
   open: boolean;
   score: number;
+  /** 采购件数（金额 = 件数 × UNIT_PRICE） */
+  items: number;
   maxCombo: number;
   isCheckout: boolean;
   brandStats: Record<TokenType, number>;
@@ -26,14 +28,14 @@ interface GameOverModalProps {
 export default function GameOverModal({
   open,
   score,
+  items,
   maxCombo,
   isCheckout,
   brandStats,
   onPlayAgain
 }: GameOverModalProps) {
-  const v = useMemo(() => verdict(score), [score]);
+  const v = useMemo(() => verdict(items), [items]);
   const stats = useMemo(() => toBrandStatsList(brandStats), [brandStats]);
-  const totalItems = useMemo(() => stats.reduce((s, x) => s + x.count, 0), [stats]);
 
   /* 弹窗开启 → 礼花 + 震动 */
   useEffect(() => {
@@ -66,7 +68,7 @@ export default function GameOverModal({
 
   if (!open) return null;
 
-  const shareText = `我在《Luxe Flux》消费了 $${score.toLocaleString()}！${
+  const shareText = `我在《Luxe Flux》买下了 ${items} 件，消费 $${score.toLocaleString()}！${
     v.tier === 'vip'
       ? '击败全球 99% 的消费主义受害者 👑'
       : v.tier === 'waitlist'
@@ -110,13 +112,13 @@ export default function GameOverModal({
           </div>
 
           <h2 className="font-display text-2xl font-semibold bg-gold-text bg-clip-text text-transparent">
-            {isCheckout ? '结算完成' : '消费失败？'}
+            {isCheckout ? '提前买单' : '消费结算'}
           </h2>
           <p className="mt-1 font-body text-xs uppercase tracking-[0.3em] text-gold/60">
-            {isCheckout ? 'Checkout · 买单走人' : 'Out of Moves · 步数用尽'}
+            {isCheckout ? 'Checkout · 主动买单走人' : 'Out of Moves · 步数用尽，结账离店'}
           </p>
 
-          {/* 消费总额 */}
+          {/* 消费总额：件数 × 统一单价 */}
           <div className="mt-5 rounded-2xl border border-gold/20 bg-ink/60 px-4 py-4">
             <p className="font-body text-[10px] uppercase tracking-[0.25em] text-ivory/40">
               最终消费总额
@@ -125,15 +127,15 @@ export default function GameOverModal({
               ${score.toLocaleString()}
             </p>
             <p className="mt-1.5 font-body text-[11px] text-ivory/50">
-              最高连消 ×{maxCombo}
+              {items} 件 × 统一单价 ${UNIT_PRICE.toLocaleString()} · 最高连消 ×{maxCombo}
             </p>
           </div>
 
           {/* 品牌采购统计 */}
-          {totalItems > 0 && (
+          {items > 0 && (
             <div className="mt-4 rounded-2xl border border-gold/20 bg-ink/60 px-4 py-4 text-left">
               <p className="text-center font-body text-[10px] uppercase tracking-[0.25em] text-ivory/40">
-                本局购入 · {totalItems} 件
+                本局购入 · {items} 件 / ${score.toLocaleString()}
               </p>
               <div className="mt-3 flex flex-col gap-1.5">
                 {stats.map((s) => (
@@ -144,8 +146,13 @@ export default function GameOverModal({
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gold/20 bg-black/40">
                       <BrandTile type={s.type} className="h-7 w-7" />
                     </span>
-                    <span className="flex-1 font-body text-sm font-semibold text-ivory/90">
-                      {s.name}
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate font-body text-sm font-semibold text-ivory/90">
+                        {s.name}
+                      </span>
+                      <span className="font-body text-[10px] tabular-nums text-ivory/40">
+                        ${s.subtotal.toLocaleString()}
+                      </span>
                     </span>
                     <span className="flex items-baseline gap-1">
                       <span className="font-body text-lg font-bold tabular-nums text-gold">

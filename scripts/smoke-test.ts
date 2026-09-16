@@ -11,6 +11,10 @@ import {
   applyGravity,
   hasHoles,
   clearMatches,
+  unitsOf,
+  priceOf,
+  verdict,
+  UNIT_PRICE,
   ROWS,
   COLS,
   createInitialState,
@@ -87,6 +91,39 @@ for (let i = 0; i < 500 && swapTested < 120; i++) {
 console.log(`  swap tested: ${swapTested}, max cascade: ${cascadesMax}`);
 assert(swapTested > 50, 'enough successful swaps exercised');
 
+// 2b. 统一单价计分：金额恒为「件数 × 单价」
+{
+  const b = generateBoard();
+  const sw = findSwap(b);
+  if (sw) {
+    const [, points, , events] = processSwap(b, sw[0], sw[1], getTypes(b));
+    const units = events.reduce((s, e) => s + e.units, 0);
+    assert(points === priceOf(units), `points === units × ${UNIT_PRICE} (${points} vs ${priceOf(units)})`);
+    assert(points % UNIT_PRICE === 0, 'points is a whole number of items');
+    assert(
+      events.every((e) => e.units >= e.matched),
+      'units >= matched cells (limited edition counts twice)'
+    );
+  }
+  // 限量版「买一配一」计 2 件
+  const limitedCells: Cell[] = [
+    { id: 'a', type: 'chanel', limited: true, bomb: false, brand: 'chanel' },
+    { id: 'b', type: 'chanel', limited: false, bomb: false, brand: 'chanel' }
+  ];
+  assert(unitsOf(limitedCells) === 3, 'limited cell counts as 2 items');
+  assert(priceOf(3) === 3 * UNIT_PRICE, 'priceOf = units × unit price');
+}
+
+// 2c. 结算评语按件数分档
+{
+  assert(verdict(0).tier === 'cold', 'verdict cold');
+  assert(verdict(59).tier === 'cold', 'verdict cold at 59 items');
+  assert(verdict(60).tier === 'waitlist', 'verdict waitlist at 60 items');
+  assert(verdict(119).tier === 'waitlist', 'verdict waitlist at 119 items');
+  assert(verdict(120).tier === 'vip', 'verdict vip at 120 items');
+  assert(verdict(120).message.includes(String(120)), 'verdict message shows item count');
+}
+
 // 3. clearMatches directly: ensure no infinite & board integrity after gravity
 for (let i = 0; i < 100; i++) {
   const b = generateBoard();
@@ -126,6 +163,7 @@ for (let i = 0; i < 50; i++) {
 const st = createInitialState();
 assert(st.moves === 15, 'start moves 15');
 assert(st.score === 0, 'start score 0');
+assert(st.items === 0, 'start items 0');
 assert(st.status === 'playing', 'start status playing');
 assert(st.tokenTypes.length === 6, 'start token types 6');
 assert(st.animation.phase === 'idle', 'start animation idle');
@@ -146,6 +184,10 @@ for (let i = 0; i < 30; i++) {
       assert(list[j - 1].count >= list[j].count, 'brand list sorted desc');
     }
     assert(list.every((x) => x.count > 0), 'brand list only positive');
+    assert(
+      list.every((x) => x.subtotal === priceOf(x.count)),
+      'brand subtotal = count × unit price'
+    );
   }
 }
 

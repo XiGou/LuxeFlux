@@ -6,14 +6,26 @@
  *   syncBoard / playSwap / playSwapFail / playClear / playFall / pulseCells / destroy
  * 由 App 的逻辑状态机在合适阶段调用；手势回调（onSwap / onTap）回传 React。
  */
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import Phaser from 'phaser';
 import type { Board } from '../types/game';
 import Match3Scene, {
   SCENE_KEY,
   INTERACTIVE,
-  SCENE_CONFIG
+  SCENE_CONFIG,
+  SCENE_READY
 } from '../game/Match3Scene';
+
+/**
+ * 渲染分辨率倍率（HiDPI 适配）
+ * 画布后备存储按设备像素创建（width * DPR），再用 zoom = 1/DPR 把 CSS 尺寸缩回，
+ * 否则在 2x/3x 屏上画布会被浏览器整体放大 → 所有 tile 都发虚。
+ * 上限 2，兼顾清晰度与移动端 GPU 填充率。
+ */
+function renderScale(): number {
+  const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+  return Math.min(Math.max(dpr, 1), 2);
+}
 
 export interface GameBoardHandle {
   syncBoard: (board: Board) => void;
@@ -42,6 +54,8 @@ const GameBoardBridge = forwardRef<GameBoardHandle, GameBoardBridgeProps>(
     cbRef.current = { onSwap, onTap };
     const aliveRef = useRef(true);
     aliveRef.current = true;
+    /** 引擎 + 品牌素材是否就绪（就绪后 loading 淡出） */
+    const [ready, setReady] = useState(false);
 
     /* ---------- 初始化 Phaser ---------- */
     useEffect(() => {
@@ -61,14 +75,17 @@ const GameBoardBridge = forwardRef<GameBoardHandle, GameBoardBridgeProps>(
         onTap: (index: number) => cbRef.current.onTap(index)
       };
 
+      const dpr = renderScale();
       const game = new Phaser.Game({
         type: Phaser.AUTO,
         parent: el,
         transparent: true,
         scale: {
           mode: Phaser.Scale.NONE,
-          width: el.clientWidth,
-          height: el.clientHeight,
+          // 后备存储用设备像素，CSS 尺寸靠 zoom 缩回 → HiDPI 下不再模糊
+          width: Math.max(1, Math.round(el.clientWidth * dpr)),
+          height: Math.max(1, Math.round(el.clientHeight * dpr)),
+          zoom: 1 / dpr,
           autoRound: true
         },
         scene: [Match3Scene],
@@ -82,12 +99,25 @@ const GameBoardBridge = forwardRef<GameBoardHandle, GameBoardBridgeProps>(
         sceneRef.current = game.scene.getScene(SCENE_KEY) as Match3Scene;
       });
 
+      // 场景 + 素材就绪 → 关闭 loading（可能已就绪，则立即关闭）
+      const onSceneReady = () => {
+        if (aliveRef.current) setReady(true);
+      };
+      if (SCENE_READY.done) {
+        onSceneReady();
+      } else {
+        SCENE_READY.callbacks.add(onSceneReady);
+      }
+
       // 容器尺寸变化（旋转 / 窗口缩放）时同步 Phaser 画布
       const ro = new ResizeObserver((entries) => {
         for (const entry of entries) {
           const { width, height } = entry.contentRect;
           if (width > 0 && height > 0) {
-            game.scale.resize(width, height);
+            game.scale.resize(
+              Math.max(1, Math.round(width * dpr)),
+              Math.max(1, Math.round(height * dpr))
+            );
           }
         }
       });
@@ -95,10 +125,12 @@ const GameBoardBridge = forwardRef<GameBoardHandle, GameBoardBridgeProps>(
 
       return () => {
         aliveRef.current = false;
+        SCENE_READY.callbacks.delete(onSceneReady);
         ro.disconnect();
         sceneRef.current = null;
         game.destroy(true);
         gameRef.current = null;
+        setReady(false);
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -159,9 +191,17 @@ const GameBoardBridge = forwardRef<GameBoardHandle, GameBoardBridgeProps>(
         style={{ aspectRatio: `${cols}/${rows}` }}
         aria-label="游戏棋盘"
       >
-        {/* 兜底 loading（引擎就绪前占位） */}
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-gold/40">
-          <span className="font-body text-xs uppercase tracking-[0.3em]">Loading…</span>
+        {/* loading：引擎 + 品牌素材就绪后淡出（不遮挡棋盘） */}
+        <div
+          className={`pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 transition-opacity duration-500 ${
+            ready ? 'opacity-0' : 'opacity-100'
+          }`}
+          aria-hidden={ready}
+        >
+          <span className="h-8 w-8 animate-spin rounded-full border-2 border-gold/20 border-t-gold/80" />
+          <span className="font-body text-[10px] uppercase tracking-[0.3em] text-gold/50">
+            Loading
+          </span>
         </div>
       </div>
     );

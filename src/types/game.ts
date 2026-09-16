@@ -24,7 +24,11 @@ export interface Cell {
   id: string;
   /** 符号类型 */
   type: TokenType;
-  /** 是否「限量版」高价值符号（由道具 2 升级，消除时加价） */
+  /**
+   * 是否「限量版」符号（由「限量配货」道具升级）
+   * 所有商品统一单价，限量版不加价 —— 但按专柜潜规则「买一配一」，
+   * 成交时一次性计入 2 件（见 UNIT_PRICE / LIMITED_UNITS）。
+   */
   limited: boolean;
   /** 由 Match-5 生成的「全柜同清炸弹」（整盘同色消除） */
   bomb: boolean;
@@ -56,8 +60,13 @@ export type GameStatus = 'idle' | 'playing' | 'checkout' | 'gameover';
 /** 一次消除事件（用于连消计分与结算统计） */
 export interface MatchEvent {
   cells: Cell[];
+  /** 本次消除的格子数 */
   matched: number;
+  /** 计入采购清单的件数（限量版「买一配一」计 2 件；等于 score / UNIT_PRICE） */
+  units: number;
+  /** 本次入账金额 = units × UNIT_PRICE */
   points: number;
+  /** 本段同时形成的匹配组数（连消感） */
   combo: number;
 }
 
@@ -65,8 +74,10 @@ export interface MatchEvent {
 export interface BrandStat {
   type: TokenType;
   name: string;
-  /** 该品牌在整局中被消除的格子数（等同“采购”数量） */
+  /** 该品牌在整局中被消除的件数（限量版按 2 件计） */
   count: number;
+  /** 该品牌小计金额 = count × UNIT_PRICE */
+  subtotal: number;
 }
 
 /** 完整游戏状态 */
@@ -75,7 +86,10 @@ export interface GameState {
   rows: number;
   cols: number;
   moves: number;
+  /** 累计消费金额 = items × UNIT_PRICE（统一单价，按件计分） */
   score: number;
+  /** 累计采购件数（消除格子数，限量版「买一配一」计 2 件） */
+  items: number;
   status: GameStatus;
   /** 本局最高连消数 */
   maxCombo: number;
