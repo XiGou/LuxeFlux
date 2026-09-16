@@ -187,7 +187,7 @@ const GameBoardBridge = forwardRef<GameBoardHandle, GameBoardBridgeProps>(
     return (
       <div
         ref={containerRef}
-        className="relative mx-auto w-full max-w-[420px] select-none touch-none"
+        className="relative mx-auto w-full max-w-[420px] select-none touch-none rounded-[18px] border border-gold/30 bg-[#17171a]"
         style={{ aspectRatio: `${cols}/${rows}` }}
         aria-label="游戏棋盘"
       >
