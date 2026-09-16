@@ -1,29 +1,51 @@
 /**
  * Header — 奢华黑金顶栏
- * 左: 步数 | 中: Logo | 右: 采购件数 + 消费额 (Prespend)
+ * 左: 声音开关 + 步数 | 中: Logo | 右: 采购件数 + 消费额 (Prespend)
  */
-import { Footprints, ShoppingBag } from 'lucide-react';
+import { Volume2, VolumeX, Footprints, ShoppingBag } from 'lucide-react';
 
 interface HeaderProps {
   moves: number;
   score: number;
   /** 已采购件数（金额 = 件数 × 统一单价） */
   items: number;
+  /** 声音总开关（BGM + 音效） */
+  soundOn: boolean;
+  onToggleSound: () => void;
 }
 
-export default function Header({ moves, score, items }: HeaderProps) {
+export default function Header({ moves, score, items, soundOn, onToggleSound }: HeaderProps) {
   return (
     <header className="flex items-center justify-between gap-2 px-4 pb-2 pt-1">
-      {/* 步数 */}
-      <div className="flex min-w-[88px] flex-col items-start">
-        <span className="font-body text-[10px] uppercase tracking-[0.2em] text-ivory/40">
-          Moves
-        </span>
-        <div className="flex items-center gap-1.5">
-          <Footprints className="h-4 w-4 text-gold" strokeWidth={1.8} />
-          <span className="font-body text-2xl font-bold tabular-nums text-ivory">
-            {moves}
+      {/* 声音开关 + 步数 */}
+      <div className="flex min-w-[88px] items-center gap-2">
+        <button
+          type="button"
+          onClick={onToggleSound}
+          aria-label={soundOn ? '关闭声音' : '开启声音'}
+          aria-pressed={soundOn}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition active:scale-90 ${
+            soundOn
+              ? 'border-gold/40 bg-gold/10 text-gold-bright'
+              : 'border-ivory/15 bg-ink-soft text-ivory/35'
+          }`}
+        >
+          {soundOn ? (
+            <Volume2 className="h-4 w-4" strokeWidth={1.8} />
+          ) : (
+            <VolumeX className="h-4 w-4" strokeWidth={1.8} />
+          )}
+        </button>
+        <div className="flex flex-col items-start">
+          <span className="font-body text-[10px] uppercase tracking-[0.2em] text-ivory/40">
+            Moves
           </span>
+          <div className="flex items-center gap-1.5">
+            <Footprints className="h-4 w-4 text-gold" strokeWidth={1.8} />
+            <span className="font-body text-2xl font-bold tabular-nums text-ivory">
+              {moves}
+            </span>
+          </div>
         </div>
       </div>
 

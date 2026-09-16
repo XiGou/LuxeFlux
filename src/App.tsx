@@ -26,7 +26,7 @@ import {
   useResell,
   POWER_UPS
 } from './utils/gameLogic';
-import { tapHaptic, powerUpHaptic, gameOverHaptic, playSound } from './utils/soundAndHaptics';
+import { tapHaptic, powerUpHaptic, gameOverHaptic, playSound, unlockAudio, setSoundOn, isSoundOn } from './utils/soundAndHaptics';
 import Header from './components/Header';
 import PowerUps from './components/PowerUps';
 import GameOverModal from './components/GameOverModal';
@@ -44,6 +44,7 @@ export default function App() {
   const [activePowerUp, setActivePowerUp] = useState<PowerUpType | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [checkoutMode, setCheckoutMode] = useState(false);
+  const [soundOn, setSoundOnState] = useState<boolean>(() => isSoundOn());
 
   // Phaser 场景 ref
   const boardRef = useRef<GameBoardHandle>(null);
@@ -67,6 +68,34 @@ export default function App() {
   }, []);
 
   /* ================================================================
+   * 音频：首次用户手势解锁（移动端自动播放策略）→ 起播 BGM
+   * ================================================================ */
+  useEffect(() => {
+    const unlock = () => unlockAudio();
+    window.addEventListener('pointerdown', unlock, { once: true, passive: true });
+    window.addEventListener('touchstart', unlock, { once: true, passive: true });
+    window.addEventListener('keydown', unlock, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('touchstart', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, []);
+
+  /** 声音总开关（BGM + 音效，状态持久化） */
+  const handleToggleSound = useCallback(() => {
+    setSoundOnState((prev) => {
+      const next = !prev;
+      setSoundOn(next);
+      if (next) {
+        unlockAudio();
+        tapHaptic();
+      }
+      return next;
+    });
+  }, []);
+
+  /* ================================================================
    * 级联动画驱动：clearing → falling → (连消循环) → settle
    * ================================================================ */
   /** 结算（consumeMove: 交换触发的级联消耗步数；道具触发不消耗） */
@@ -76,6 +105,7 @@ export default function App() {
       if (newMoves <= 0) {
         setCheckoutMode(false);
         setModalOpen(true);
+        playSound('gameover'); // 买单一刻：终端和弦 + 长尾 KA-CHING
         safeSetGame((g) => ({
           ...g,
           moves: 0,
@@ -106,11 +136,12 @@ export default function App() {
         return;
       }
 
-      playSound('match');
+      const newCombo = prev.animation.cascade + 1;
+      // 收银机 KA-CHING + 金币叮当：连消越高音越亮（听得见的消费升级）
+      playSound('match', { cascade: newCombo });
       powerUpHaptic();
       if (evt.combo >= 2) gameOverHaptic(); // 连消成就感
 
-      const newCombo = prev.animation.cascade + 1;
       const newScore = prev.score + evt.points;
       const newItems = prev.items + evt.units;
       const newStats = mergeBrandStats(prev.brandStats, [evt]);
@@ -321,6 +352,7 @@ export default function App() {
     if (prev.status !== 'playing') return;
     setCheckoutMode(true);
     setModalOpen(true);
+    playSound('gameover');
     safeSetGame((g) => ({ ...g, status: 'checkout', busy: false, animation: IDLE_ANIM }));
   }, [safeSetGame]);
 
@@ -390,7 +422,13 @@ export default function App() {
       <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col">
         {/* 顶栏 + 安全区域 */}
         <div className="pt-[max(env(safe-area-inset-top),0.75rem)]">
-          <Header moves={game.moves} score={game.score} items={game.items} />
+          <Header
+            moves={game.moves}
+            score={game.score}
+            items={game.items}
+            soundOn={soundOn}
+            onToggleSound={handleToggleSound}
+          />
         </div>
 
         {/* 棋盘（Phaser 引擎） */}

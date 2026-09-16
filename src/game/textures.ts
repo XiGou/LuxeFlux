@@ -303,3 +303,127 @@ export function registerSparkTexture(scene: Phaser.Scene): string {
   }
   return key;
 }
+
+/* ------------------------------------------------------------------ */
+/* 消费主义素材：金币 / 美金大钞                                        */
+/* ------------------------------------------------------------------ */
+
+/** 金币纹理 key */
+export const COIN_KEY = 'money-coin';
+/** 美金钞票纹理 key */
+export const BILL_KEY = 'money-bill';
+
+/** 圆角矩形路径（不依赖 ctx.roundRect，兼容旧 WebView） */
+function roundRectPath(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number
+): void {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.lineTo(x + w - rr, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+  ctx.lineTo(x + w, y + h - rr);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+  ctx.lineTo(x + rr, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+  ctx.lineTo(x, y + rr);
+  ctx.quadraticCurveTo(x, y, x + rr, y);
+  ctx.closePath();
+}
+
+/** 金币：金属渐变圆盘 + 内圈 + `$`（消除 / 拖拽时撒出的钱） */
+export function registerCoinTexture(scene: Phaser.Scene): string {
+  if (scene.textures.exists(COIN_KEY)) return COIN_KEY;
+  const S = 64;
+  const c = S / 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = S;
+  canvas.height = S;
+  const ctx = canvas.getContext('2d')!;
+
+  // 盘面：偏心金属渐变（左上高光 → 右下暗金）
+  const grad = ctx.createRadialGradient(c * 0.72, c * 0.66, 2, c, c, c);
+  grad.addColorStop(0, '#fff8d8');
+  grad.addColorStop(0.4, '#f5df9b');
+  grad.addColorStop(0.78, '#d4af37');
+  grad.addColorStop(1, '#9c7415');
+  ctx.beginPath();
+  ctx.arc(c, c, c - 1, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // 外缘高光 + 内圈刻线
+  ctx.beginPath();
+  ctx.arc(c, c, c - 4.5, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(c, c, c - 10, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(122,92,16,0.7)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // 币面 `$`
+  ctx.font = 'bold 34px Georgia, "Times New Roman", serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(90,66,8,0.95)';
+  ctx.fillText('$', c, c + 1);
+
+  scene.textures.addCanvas(COIN_KEY, canvas);
+  return COIN_KEY;
+}
+
+/** 美金大钞：绿色票面 + 中央椭圆 + `$100` */
+export function registerBillTexture(scene: Phaser.Scene): string {
+  if (scene.textures.exists(BILL_KEY)) return BILL_KEY;
+  const W = 96;
+  const H = 48;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d')!;
+
+  // 票面底
+  roundRectPath(ctx, 0.5, 0.5, W - 1, H - 1, 6);
+  ctx.fillStyle = '#5f7a45';
+  ctx.fill();
+  // 内框（浅绿）
+  roundRectPath(ctx, 4, 4, W - 8, H - 8, 4);
+  ctx.fillStyle = '#c6d6aa';
+  ctx.fill();
+  // 内框细线
+  roundRectPath(ctx, 6.5, 6.5, W - 13, H - 13, 3);
+  ctx.strokeStyle = 'rgba(61,86,40,0.55)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // 中央椭圆 + `$`
+  ctx.beginPath();
+  ctx.ellipse(W / 2, H / 2, 17, 12, 0, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(61,86,40,0.7)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.font = 'bold 19px Georgia, "Times New Roman", serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#3d5628';
+  ctx.fillText('$', W / 2, H / 2 + 1);
+
+  // 四角 100
+  ctx.font = 'bold 9px Arial, Helvetica, sans-serif';
+  ctx.fillStyle = 'rgba(61,86,40,0.85)';
+  ctx.fillText('100', 13, 13);
+  ctx.fillText('100', W - 13, 13);
+  ctx.fillText('100', 13, H - 10);
+  ctx.fillText('100', W - 13, H - 10);
+
+  scene.textures.addCanvas(BILL_KEY, canvas);
+  return BILL_KEY;
+}

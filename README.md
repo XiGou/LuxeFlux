@@ -159,7 +159,29 @@ npx cap open android
 - **粒子系統**：`Phaser.Particles` 金色閃光爆破，0/120 FPS 級流暢；
 - **限量版 / 爆破 / 炸彈**：金色描邊高亮（引擎 Graphics 疊加層）。
 
-引擎紋理由品牌徽章 Canvas 程序化生成（`src/game/textures.ts`），與 React 版 BrandMark 視覺一致，無外部圖片、離線可用。
+**💸 消費主義特效（金錢雨）**：
+
+- **拖拽撒錢**：按下格子先「抓出一把金幣」，拖動時沿手指軌跡持續掉落金幣，被拖的方塊還會**順著方向傾斜**，像拖著一件戰利品穿過商場；
+- **消除噴錢**：每一格消除都同時噴出**金幣 + 美金大鈔**，連消段位越高鈔票越多；
+- **飛錢進帳**：消除的格子會弹出金幣 / 大鈔，畫弧線飛向右上角 **Prespend** 消費額並縮小消失 —— 把「消除 = 錢進你的帳單」這條因果直接演出來；
+- **連消衝擊波**：連消 ≥ 2 時在消除中心擴散一圈金色光環，買得越多場面越誇張。
+
+引擎紋理由品牌徽章 Canvas 程序化生成（`src/game/textures.ts`），與 React 版 BrandMark 視覺一致，無外部圖片、離線可用；金幣 / 美金大鈔同樣是 Canvas 程序化紋理（`registerCoinTexture` / `registerBillTexture`）。
+
+---
+
+## 🎵 消費主義 BGM 與音效（`src/utils/audioEngine.ts`）
+
+> 全部音樂與音效由 **Web Audio API 即時合成**，零外部音頻素材、零下載體積、離線可用。
+
+- **BGM《Mall Lounge》**：96 BPM 黑金 Lo-fi Trap / 精品店 Lounge，
+  kick、snare、hi-hat、bass、電鋼和弦與 **bling 鈴音**（FM 合成，像櫥窗反光），
+  4 小節循環和聲 `Fmaj7 → Am7 → Dm7 → G7`。採用前瞻式排程（25ms 輪詢 + 0.2s lookahead），節拍不受 JS 抖動影響。
+- **收銀機 KA-CHING**：消除時的錢箱悶響 + 雙鈴 + 高頻碎光，**連消每升一級音高升 2 個半音**（聽得見的消費升級）。
+- **金幣叮噹** `B5 → E6` 雙響、**刷卡 swipe**（帶通噪聲掃頻）、**道具上行 bling 琶音**、**結算終止和弦 + 長尾 KA-CHING**。
+
+移動端自動播放策略：AudioContext 必須在首次用戶手勢後解鎖，因此 App 在首次 `pointerdown / touchstart / keydown` 時呼叫 `unlockAudio()` 起播。
+頂欄左側提供 **聲音總開關**（同時控制 BGM 與音效），狀態持久化在 `localStorage`。
 
 ---
 

@@ -2,11 +2,14 @@
  * 音效與原生震動封裝
  * - 原生: Capacitor Haptics (iOS / Android)
  * - Web: navigator.vibrate 弱降級
- * - 音效: Howler（無素材時自動靜音，不會報錯）
+ * - 音效: 程序化「消費主義」音頻引擎（Web Audio 實時合成，無外部素材）
+ *   收銀機 KA-CHING / 金幣叮噹 / 刷卡聲 / 道具 bling / 96 BPM 商場 Lounge BGM
  */
 import { Capacitor } from '@capacitor/core';
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
-import { Howl } from 'howler';
+import { audio, type SfxName, type SfxOptions } from './audioEngine';
+
+export type { SfxName, SfxOptions };
 
 /* ------------------------------------------------------------------ */
 /* Haptics (原生震動)                                                   */
@@ -54,25 +57,32 @@ export async function gameOverHaptic(): Promise<void> {
 }
 
 /* ------------------------------------------------------------------ */
-/* Sound (Howler)                                                      */
+/* Sound（程序化消費主義音頻引擎）                                       */
 /* ------------------------------------------------------------------ */
 
-// 若未來放入真實音效，放在 public/audio/ 並取消註解即可。
-const SOUND_FILES: Record<string, string | null> = {
-  match: null,
-  swap: null,
-  powerup: null,
-  cascade: null,
-  gameover: null
-};
-
-/** 播放音效（素材缺失時安全靜默） */
-export function playSound(name: keyof typeof SOUND_FILES): void {
-  const src = SOUND_FILES[name];
-  if (!src) return;
+/** 播放音效（關閉音效 / 引擎不可用時安全靜默） */
+export function playSound(name: SfxName, opts?: SfxOptions): void {
   try {
-    new Howl({ src, volume: 0.5 }).play();
+    audio.sfx(name, opts);
+  } catch {
+    /* 音頻失敗不應中斷遊戲 */
+  }
+}
+
+/** 首次用戶手勢時解鎖音頻並按偏好起播 BGM（移動端自動播放策略要求） */
+export function unlockAudio(): void {
+  try {
+    audio.unlock();
   } catch {
     /* ignore */
   }
+}
+
+/** 聲音總開關（BGM + 音效） */
+export function setSoundOn(on: boolean): void {
+  audio.setSoundOn(on);
+}
+
+export function isSoundOn(): boolean {
+  return audio.isMusicOn() || audio.isSfxOn();
 }

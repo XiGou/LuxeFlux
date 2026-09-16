@@ -15,7 +15,11 @@ import { ROWS, COLS } from '../utils/gameLogic';
 import {
   ensureTokenTexture,
   registerSparkTexture,
+  registerCoinTexture,
+  registerBillTexture,
   loadSpriteSheet,
+  COIN_KEY,
+  BILL_KEY,
   TILE_SIZE
 } from './textures';
 
@@ -52,6 +56,7 @@ const CELL_RATIO = 0.9; // 实心方块 tile 相对格子占比（雪碧图 tile
 const SWAP_MS = 190; // 交换滑动时长
 const CLEAR_MS = 250; // 消除 pop 时长
 const FALL_MS = 260; // 下落时长（单格）
+const MAX_FLY_MONEY = 12; // 单次消除最多几格「飞钱进账」（性能上限）
 
 export default class Match3Scene extends Phaser.Scene {
   private rows = ROWS;
@@ -69,6 +74,14 @@ export default class Match3Scene extends Phaser.Scene {
   private textureSize = 128;
   private backing!: Phaser.GameObjects.Graphics;
   private emitter!: Phaser.GameObjects.Particles.ParticleEmitter;
+  /** 金币粒子（消除时向上喷） */
+  private coinEmitter!: Phaser.GameObjects.Particles.ParticleEmitter;
+  /** 美金大钞粒子（飘落感，连消越高越多） */
+  private billEmitter!: Phaser.GameObjects.Particles.ParticleEmitter;
+  /** 拖拽「撒钱」拖尾粒子 */
+  private trailEmitter!: Phaser.GameObjects.Particles.ParticleEmitter;
+  /** 上次拖尾发射时间（节流） */
+  private trailAt = 0;
 
   // 拖拽手势状态
   private dragFrom = -1;
@@ -100,6 +113,7 @@ export default class Match3Scene extends Phaser.Scene {
     this.dragFrom = -1;
     this.dragImage = null;
     this.baseScales.clear();
+    this.trailAt = 0;
 
     const sparkKey = registerSparkTexture(this);
 
@@ -131,6 +145,52 @@ export default class Match3Scene extends Phaser.Scene {
       blendMode: Phaser.BlendModes.ADD
     });
 
+    // 消费主义素材：金币 / 美金大钞
+    const coinKey = registerCoinTexture(this);
+    const billKey = registerBillTexture(this);
+
+    // 金币：消除时向上喷（钱「炸」出来）
+    this.coinEmitter = this.add
+      .particles(0, 0, coinKey, {
+        speed: { min: 100, max: 230 },
+        angle: { min: 205, max: 335 },
+        scale: { start: 0.85, end: 0.08 },
+        alpha: { start: 1, end: 0 },
+        rotate: { start: 0, end: 360 },
+        lifespan: { min: 420, max: 780 },
+        gravityY: 330,
+        emitting: false
+      })
+      .setDepth(20);
+
+    // 大钞：飘得慢、转得少，像钞票在空中翻飞
+    this.billEmitter = this.add
+      .particles(0, 0, billKey, {
+        speed: { min: 70, max: 180 },
+        angle: { min: 235, max: 305 },
+        scale: { start: 1, end: 0.22 },
+        alpha: { start: 1, end: 0 },
+        rotate: { start: -40, end: 40 },
+        lifespan: { min: 620, max: 1050 },
+        gravityY: 70,
+        emitting: false
+      })
+      .setDepth(20);
+
+    // 拖拽拖尾：跟着手指一路撒钱
+    this.trailEmitter = this.add
+      .particles(0, 0, coinKey, {
+        speed: { min: 12, max: 60 },
+        angle: { min: 235, max: 305 },
+        scale: { start: 0.55, end: 0.05 },
+        alpha: { start: 0.95, end: 0 },
+        rotate: { start: 0, end: 240 },
+        lifespan: { min: 260, max: 460 },
+        gravityY: 170,
+        emitting: false
+      })
+      .setDepth(20);
+
     INTERACTIVE.value = true;
     this.registerInput();
 
@@ -151,10 +211,11 @@ export default class Match3Scene extends Phaser.Scene {
         this.dragFrom = i;
         const view = this.viewAt(i);
         this.dragImage = view ? view.sprite : null;
-        // 按下即反馈：起点格轻微放大 + 置顶，让玩家知道“抓住了”
+        // 按下即反馈：起点格放大 + 置顶 + 抓出一把钱
         if (view) {
-          view.sprite.setScale(this.baseScale(view.sprite) * 1.06);
+          view.sprite.setScale(this.baseScale(view.sprite) * 1.1);
           view.sprite.setDepth(10);
+          this.trailEmitter.explode(2, pointer.x, pointer.y);
         }
       },
       this
@@ -176,7 +237,15 @@ export default class Match3Scene extends Phaser.Scene {
           if (Math.abs(dx) >= threshold || Math.abs(dy) >= threshold) {
             this.dragImage.setPosition(baseX + dx, baseY + dy);
             this.dragImage.setDepth(10);
-            this.dragImage.setScale(this.baseScale(this.dragImage) * 1.08);
+            this.dragImage.setScale(this.baseScale(this.dragImage) * 1.12);
+            // 顺着拖动方向倾斜：像「拖着一件商品走」，手感更黏手
+            this.dragImage.setAngle(Phaser.Math.Clamp(dx * 0.07, -14, 14));
+            // 拖尾撒钱（节流：约 25fps，避免粒子刷屏）
+            const now = this.time.now;
+            if (now - this.trailAt > 40) {
+              this.trailAt = now;
+              this.trailEmitter.explode(1, pointer.x, pointer.y);
+            }
           }
         }
 
@@ -240,6 +309,7 @@ export default class Match3Scene extends Phaser.Scene {
       if (i >= 0) {
         this.dragImage.setPosition(this.colCenter(i % this.cols), this.rowCenter(Math.floor(i / this.cols)));
         this.dragImage.setScale(this.baseScale(this.dragImage));
+        this.dragImage.setAngle(0);
         this.dragImage.setDepth(0);
       }
     }
@@ -551,12 +621,24 @@ export default class Match3Scene extends Phaser.Scene {
         }
       };
 
+      // 消除中心（用于连消冲击波）
+      let cx = 0;
+      let cy = 0;
+      let cn = 0;
+
       for (const i of indices) {
         const view = this.viewAt(i);
         if (!view) continue;
         pending++;
         const sprite = view.sprite;
         this.emitBurst(sprite.x, sprite.y, cascade);
+        // 满天飞钱有上限（大炸弹一次清几十格时按概率抽样，防止精灵数暴涨）
+        if (cn < MAX_FLY_MONEY || Math.random() < MAX_FLY_MONEY / (cn + 1)) {
+          this.flyMoney(sprite.x, sprite.y, cascade);
+        }
+        cx += sprite.x;
+        cy += sprite.y;
+        cn++;
         this.tweens.add({
           targets: sprite,
           scale: (img: Phaser.GameObjects.Image) => this.baseScale(img) * 0.05,
@@ -572,6 +654,8 @@ export default class Match3Scene extends Phaser.Scene {
           }
         });
       }
+      // 连消 ≥2：在消除中心补一记金色冲击波（买得越多，场面越夸张）
+      if (cn > 0 && cascade >= 2) this.moneyRing(cx / cn, cy / cn, cascade);
       if (pending === 0) resolve();
     });
   }
@@ -645,8 +729,83 @@ export default class Match3Scene extends Phaser.Scene {
   }
 
   private emitBurst(x: number, y: number, cascade: number): void {
-    const count = 12 + Math.min(cascade, 4) * 6;
-    this.emitter.explode(count, x, y);
+    const level = Math.min(cascade, 5);
+    // 闪光碎片（原有）
+    this.emitter.explode(10 + level * 4, x, y);
+    // 金币：每格必喷，连消越高喷越多
+    this.coinEmitter.explode(2 + level, x, y);
+    // 大钞：连消 ≥1 必出，普通消除 45% 概率来一张
+    if (level >= 1 || Math.random() < 0.45) {
+      this.billEmitter.explode(level >= 3 ? 2 : 1, x, y);
+    }
+  }
+
+  /**
+   * 金币 / 大钞「飞进账」：从消除格先弹出一下，再划弧线飞向顶栏 Prespend，
+   * 边飞边缩小旋转消失 —— 把「消除 = 钱进你的消费额」这条因果画出来。
+   */
+  private flyMoney(x: number, y: number, cascade: number): void {
+    const count = cascade >= 2 ? 2 : 1;
+    const tx = this.scale.width * 0.86; // 顶栏 Prespend（右上）
+    const ty = -this.cellSize * 0.6;
+
+    for (let k = 0; k < count; k++) {
+      const isBill = Math.random() < 0.4;
+      const img = this.add.image(x, y, isBill ? BILL_KEY : COIN_KEY).setDepth(30);
+      const w = this.cellSize * (isBill ? 0.62 : 0.42);
+      img.setDisplaySize(w, isBill ? w * 0.5 : w);
+      img.setAngle(Phaser.Math.Between(-25, 25));
+      // 分别记住横纵基准缩放：钞票不是正方形，不能共用 scale
+      const sx = img.scaleX;
+      const sy = img.scaleY;
+
+      const midX = x + Phaser.Math.Between(-this.cellSize * 0.9, this.cellSize * 0.9);
+      const midY = y - this.cellSize * Phaser.Math.FloatBetween(0.6, 1.2);
+
+      this.tweens.add({
+        targets: img,
+        x: midX,
+        y: midY,
+        scaleX: sx * 1.2,
+        scaleY: sy * 1.2,
+        duration: 190,
+        delay: k * 60,
+        ease: 'Quad.easeOut',
+        onComplete: () => {
+          this.tweens.add({
+            targets: img,
+            x: tx,
+            y: ty,
+            scaleX: sx * 0.3,
+            scaleY: sy * 0.3,
+            alpha: 0,
+            angle: img.angle + Phaser.Math.Between(-220, 220),
+            duration: 480 + Phaser.Math.Between(0, 140),
+            ease: 'Cubic.easeIn',
+            onComplete: () => img.destroy()
+          });
+        }
+      });
+    }
+  }
+
+  /** 连消冲击波：金色圆环从消除中心扩散消失 */
+  private moneyRing(x: number, y: number, cascade: number): void {
+    const r0 = this.cellSize * 0.34;
+    const r1 = this.cellSize * (1.1 + Math.min(cascade, 5) * 0.3);
+    const g = this.add.graphics({ x, y }).setDepth(24);
+    g.lineStyle(3, 0xf0d68a, 0.9);
+    g.strokeCircle(0, 0, r0);
+    g.lineStyle(1.5, 0xffffff, 0.5);
+    g.strokeCircle(0, 0, r0 * 0.72);
+    this.tweens.add({
+      targets: g,
+      scale: r1 / r0,
+      alpha: 0,
+      duration: 420,
+      ease: 'Cubic.easeOut',
+      onComplete: () => g.destroy()
+    });
   }
 
   /* ------------------------------------------------------------------ */
@@ -699,6 +858,11 @@ export default class Match3Scene extends Phaser.Scene {
   /** 组件卸载时清理 */
   destroyAll(): void {
     this.tweens.killAll();
+    // 停掉钱雨粒子：避免卸载瞬间残留粒子继续飞
+    this.emitter?.stop(true);
+    this.coinEmitter?.stop(true);
+    this.billEmitter?.stop(true);
+    this.trailEmitter?.stop(true);
     this.views.clear();
     this.images = [];
     this.board = [];
