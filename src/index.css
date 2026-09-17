@@ -20,7 +20,8 @@ body,
 
 body {
   background-color: #fbf8f1;
-  color: #3a3226;
+  /* 深金墨（金褐）正文：奶白底上 8.9:1，既有「深金」的高级感又不掉可读性 */
+  color: #6b4f12;
   font-family: 'Montserrat', 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

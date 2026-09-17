@@ -95,46 +95,46 @@ export default function GameOverModal({
   const TierIcon = tierIcon;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-deep/45 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gold-ink/45 p-4 backdrop-blur-sm">
       <motion.div
         initial={{ opacity: 0, scale: 0.85, y: 24 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.9, y: 12 }}
         transition={{ type: 'spring', stiffness: 260, damping: 24 }}
-        className="relative max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-3xl border border-gold/40 bg-cream-panel shadow-[0_24px_70px_rgba(140,109,34,0.28)]"
+        className="relative max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-3xl border border-gold/70 bg-cream-panel shadow-[0_24px_70px_rgba(140,109,34,0.3)]"
       >
         {/* 顶部金色光晕 */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gold-gradient opacity-25 blur-2xl" />
 
         <div className="relative px-6 pb-7 pt-8 text-center">
           <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-gold-gradient shadow-gold-glow">
-            <TierIcon className="h-7 w-7 text-ink-deep" strokeWidth={2} />
+            <TierIcon className="h-7 w-7 text-gold-ink" strokeWidth={2} />
           </div>
 
           <h2 className="font-display text-2xl font-semibold bg-gold-text bg-clip-text text-transparent">
             {isCheckout ? '提前买单' : '消费结算'}
           </h2>
-          <p className="mt-1 font-body text-xs uppercase tracking-[0.3em] text-ivory-soft">
+          <p className="mt-1 font-body text-xs uppercase tracking-[0.3em] text-gold-darker">
             {isCheckout ? 'Checkout · 主动买单走人' : 'Out of Moves · 步数用尽，结账离店'}
           </p>
 
           {/* 消费总额：件数 × 统一单价 */}
-          <div className="mt-5 rounded-2xl border border-gold/30 bg-white/70 px-4 py-4 shadow-card-soft">
-            <p className="font-body text-[10px] uppercase tracking-[0.25em] text-ivory-soft">
+          <div className="mt-5 rounded-2xl border border-gold/60 bg-white/70 px-4 py-4 shadow-card-soft">
+            <p className="font-body text-[10px] uppercase tracking-[0.25em] text-gold-darker">
               最终消费总额
             </p>
-            <p className="mt-1 font-body text-4xl font-bold tabular-nums text-gold-deep">
+            <p className="mt-1 font-body text-4xl font-bold tabular-nums text-gold-darker">
               ${score.toLocaleString()}
             </p>
-            <p className="mt-1.5 font-body text-[11px] text-ivory-soft">
+            <p className="mt-1.5 font-body text-[11px] text-gold-darker/85">
               {items} 件 × 统一单价 ${UNIT_PRICE.toLocaleString()} · 最高连消 ×{maxCombo}
             </p>
           </div>
 
           {/* 品牌采购统计 */}
           {items > 0 && (
-            <div className="mt-4 rounded-2xl border border-gold/30 bg-white/70 px-4 py-4 text-left shadow-card-soft">
-              <p className="text-center font-body text-[10px] uppercase tracking-[0.25em] text-ivory-soft">
+            <div className="mt-4 rounded-2xl border border-gold/60 bg-white/70 px-4 py-4 text-left shadow-card-soft">
+              <p className="text-center font-body text-[10px] uppercase tracking-[0.25em] text-gold-darker">
                 本局购入 · {items} 件 / ${score.toLocaleString()}
               </p>
               <div className="mt-3 flex flex-col gap-1.5">
@@ -143,22 +143,22 @@ export default function GameOverModal({
                     key={s.type}
                     className="flex items-center gap-3 rounded-xl bg-champagne/50 px-3 py-2"
                   >
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gold/30 bg-white/80">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gold/60 bg-white/80">
                       <BrandTile type={s.type} className="h-7 w-7" />
                     </span>
                     <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate font-body text-sm font-semibold text-ink-deep">
+                      <span className="truncate font-body text-sm font-semibold text-ink-gold">
                         {s.name}
                       </span>
-                      <span className="font-body text-[10px] tabular-nums text-ivory-soft">
+                      <span className="font-body text-[10px] tabular-nums text-gold-darker/80">
                         ${s.subtotal.toLocaleString()}
                       </span>
                     </span>
                     <span className="flex items-baseline gap-1">
-                      <span className="font-body text-lg font-bold tabular-nums text-gold-deep">
+                      <span className="font-body text-lg font-bold tabular-nums text-gold-darker">
                         {s.count}
                       </span>
-                      <span className="font-body text-[10px] uppercase text-ivory-soft">件</span>
+                      <span className="font-body text-[10px] uppercase text-gold-darker/80">件</span>
                     </span>
                   </div>
                 ))}
@@ -167,8 +167,8 @@ export default function GameOverModal({
           )}
 
           {/* 讽刺评语 */}
-          <div className="mt-4 rounded-xl border border-gold/25 bg-gold/10 px-4 py-3">
-            <p className="font-display text-sm italic leading-relaxed text-gold-deep">
+          <div className="mt-4 rounded-xl border border-gold/60 bg-gold/10 px-4 py-3">
+            <p className="font-display text-sm italic leading-relaxed text-gold-darker">
               “{v.message}”
             </p>
           </div>
@@ -177,14 +177,14 @@ export default function GameOverModal({
           <div className="mt-6 flex gap-3">
             <button
               onClick={handleShare}
-              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-gold/50 bg-white/60 px-4 py-3 font-body text-sm font-semibold text-gold-deep transition hover:bg-champagne active:scale-95"
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-gold/70 bg-white/60 px-4 py-3 font-body text-sm font-semibold text-gold-darker transition hover:border-gold-deep hover:bg-champagne active:scale-95"
             >
               <Share2 className="h-4 w-4" strokeWidth={2} />
               分享成绩
             </button>
             <button
               onClick={onPlayAgain}
-              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gold-gradient px-4 py-3 font-body text-sm font-bold text-ink-deep shadow-gold-glow transition hover:brightness-105 active:scale-95"
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gold-gradient px-4 py-3 font-body text-sm font-bold text-gold-ink shadow-gold-glow transition hover:brightness-105 active:scale-95"
             >
               <RotateCcw className="h-4 w-4" strokeWidth={2.2} />
               再来一局

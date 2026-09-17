@@ -10,13 +10,17 @@ export default {
           DEFAULT: '#FBF8F1', // 主背景：奶白（暖调，非纯白）
           soft: '#F6F1E5', // 次级面板：浅奶油
           panel: '#FFFDF8', // 卡片浮层：近乎纯白，微微暖
-          line: '#E6DCC6', // 分隔线：淡金砂
-          deep: '#3A3226' // 深棕（仅用于正文/反色元素）
+          line: '#D9C79E', // 分隔线/描边：沙金（对奶白 1.6:1，肉眼不再「消失」）
+          deep: '#3A3226', // 深棕：正文
+          // 原「金墨」：深金色系正文，浅底上可读且有高级感（对奶白 8.9:1）
+          gold: '#6B4F12'
         },
         gold: {
-          DEFAULT: '#C8A44D', // 香檳金（浅底上略带深，保证描边可读）
-          bright: '#B9912F', // 强调金：比 DEFAULT 更深，用于文字保证对比度
-          deep: '#8C6D22', // 深金：边框/阴影
+          DEFAULT: '#C8A44D', // 香檳金：仅用于填充/渐变，不做小字号文字色
+          bright: '#B9912F', // 强调金
+          deep: '#8C6D22', // 深金：大字号强调（对奶白 4.6:1）
+          darker: '#6B4F12', // 深金墨：小字号金色文字统一用它（对奶白 8.9:1）
+          ink: '#5A4210', // 最深的金墨：渐变按钮上的文字 / 金色徽标底
           soft: '#EBD9A8', // 浅金：渐变/填充
           glow: 'rgba(200,164,77,0.28)'
         },
@@ -34,15 +38,16 @@ export default {
         body: ['"Montserrat"', '"Helvetica Neue"', 'Arial', 'sans-serif']
       },
       boxShadow: {
-        'gold-glow': '0 6px 18px rgba(140,109,34,0.18), 0 2px 6px rgba(140,109,34,0.12)',
+        'gold-glow': '0 6px 18px rgba(140,109,34,0.22), 0 2px 6px rgba(140,109,34,0.14)',
         'gold-inner': 'inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -2px 6px rgba(140,109,34,0.18)',
         'metal-cell': 'inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -2px 5px rgba(140,109,34,0.15)',
         'card-soft': '0 1px 2px rgba(140,109,34,0.08), 0 8px 24px rgba(140,109,34,0.10)'
       },
       backgroundImage: {
-        'gold-gradient': 'linear-gradient(135deg, #EFDCAB 0%, #D4AF37 45%, #B9912F 100%)',
+        // 金色渐变：小字号文字用 gold-ink（5.5:1 以上）压在上面对比安全
+        'gold-gradient': 'linear-gradient(135deg, #E8D29A 0%, #C9A23C 48%, #A57C1E 100%)',
         'gold-text':
-          'linear-gradient(180deg, #C9A63F 0%, #9E7C24 45%, #C8A44D 100%)',
+          'linear-gradient(180deg, #8A6A18 0%, #6B4F12 48%, #8C6D22 100%)',
         'metal-panel':
           'linear-gradient(160deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.35) 40%, rgba(200,164,77,0.12) 100%)',
         'cream-panel':

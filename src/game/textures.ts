@@ -286,8 +286,8 @@ export function registerLimitedGlossTexture(scene: Phaser.Scene): string {
 
   // 左上棱边高光（沿上边 / 左边，柔和衰减）
   const edge = ctx.createLinearGradient(0, 0, S * 0.75, S * 0.75);
-  edge.addColorStop(0, 'rgba(255,255,255,1)');
-  edge.addColorStop(0.4, 'rgba(255,244,206,0.5)');
+  edge.addColorStop(0, 'rgba(255,240,190,0.95)');
+  edge.addColorStop(0.4, 'rgba(201,162,60,0.55)');
   edge.addColorStop(1, 'rgba(255,220,140,0)');
   ctx.strokeStyle = edge;
   ctx.lineWidth = 3.4;
@@ -311,8 +311,8 @@ export function registerLimitedGlossTexture(scene: Phaser.Scene): string {
 
   // 左上斜切角（细边，勾出玻璃棱面，不铺大面积白）
   const facet = ctx.createLinearGradient(0, 0, S * 0.42, S * 0.42);
-  facet.addColorStop(0, 'rgba(255,255,255,0.62)');
-  facet.addColorStop(1, 'rgba(255,255,255,0)');
+  facet.addColorStop(0, 'rgba(255,242,198,0.7)');
+  facet.addColorStop(1, 'rgba(201,162,60,0)');
   ctx.strokeStyle = facet;
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -339,21 +339,21 @@ export function registerLimitedSweepTexture(scene: Phaser.Scene): string {
   const ctx = canvas.getContext('2d')!;
 
   const grad = ctx.createLinearGradient(0, 0, W, 0);
-  grad.addColorStop(0.0, 'rgba(255,246,214,0)');
-  grad.addColorStop(0.34, 'rgba(255,240,190,0.30)');
-  grad.addColorStop(0.5, 'rgba(255,255,248,0.98)');
-  grad.addColorStop(0.66, 'rgba(255,240,190,0.30)');
-  grad.addColorStop(1.0, 'rgba(255,246,214,0)');
+  grad.addColorStop(0.0, 'rgba(255,236,170,0)');
+  grad.addColorStop(0.34, 'rgba(230,196,96,0.38)');
+  grad.addColorStop(0.5, 'rgba(255,238,176,0.95)');
+  grad.addColorStop(0.66, 'rgba(230,196,96,0.38)');
+  grad.addColorStop(1.0, 'rgba(255,236,170,0)');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
 
   // 中心再叠一条更细的高亮芯
   const core = ctx.createLinearGradient(0, 0, W, 0);
-  core.addColorStop(0.0, 'rgba(255,255,255,0)');
-  core.addColorStop(0.46, 'rgba(255,255,255,0)');
-  core.addColorStop(0.5, 'rgba(255,255,255,0.95)');
-  core.addColorStop(0.54, 'rgba(255,255,255,0)');
-  core.addColorStop(1.0, 'rgba(255,255,255,0)');
+  core.addColorStop(0.0, 'rgba(188,146,40,0)');
+  core.addColorStop(0.46, 'rgba(188,146,40,0)');
+  core.addColorStop(0.5, 'rgba(188,146,40,0.85)');
+  core.addColorStop(0.54, 'rgba(188,146,40,0)');
+  core.addColorStop(1.0, 'rgba(188,146,40,0)');
   ctx.globalCompositeOperation = 'lighter';
   ctx.fillStyle = core;
   ctx.fillRect(0, 0, W, H);
@@ -435,8 +435,8 @@ export function registerLimitedShaftTexture(scene: Phaser.Scene): string {
 
   // 锥形本体：底部窄（贴卡面）、顶部宽（射灯散开）
   const grad = ctx.createLinearGradient(0, H, 0, 0);
-  grad.addColorStop(0, 'rgba(255,244,205,0.55)');
-  grad.addColorStop(0.45, 'rgba(255,236,175,0.22)');
+  grad.addColorStop(0, 'rgba(214,176,72,0.5)');
+  grad.addColorStop(0.45, 'rgba(232,204,128,0.22)');
   grad.addColorStop(1, 'rgba(255,228,150,0)');
   ctx.fillStyle = grad;
   ctx.beginPath();

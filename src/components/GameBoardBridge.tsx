@@ -187,7 +187,7 @@ const GameBoardBridge = forwardRef<GameBoardHandle, GameBoardBridgeProps>(
     return (
       <div
         ref={containerRef}
-        className="relative mx-auto w-full max-w-[420px] select-none touch-none rounded-[18px] border border-gold/40 bg-cream-panel shadow-card-soft"
+        className="relative mx-auto w-full max-w-[420px] select-none touch-none rounded-[18px] border border-gold/70 bg-cream-panel shadow-card-soft"
         style={{ aspectRatio: `${cols}/${rows}` }}
         aria-label="游戏棋盘"
       >
@@ -198,8 +198,8 @@ const GameBoardBridge = forwardRef<GameBoardHandle, GameBoardBridgeProps>(
           }`}
           aria-hidden={ready}
         >
-          <span className="h-8 w-8 animate-spin rounded-full border-2 border-gold/25 border-t-gold" />
-          <span className="font-body text-[10px] uppercase tracking-[0.3em] text-gold-deep/70">
+          <span className="h-8 w-8 animate-spin rounded-full border-2 border-gold/40 border-t-gold-deep" />
+          <span className="font-body text-[10px] uppercase tracking-[0.3em] text-gold-darker">
             Loading
           </span>
         </div>
