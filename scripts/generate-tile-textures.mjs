@@ -13,6 +13,12 @@
  *     根除缩放 / 过滤 / 旋转时从透明区透出的白色光晕；
  *  3. 输出标准 sRGB PNG，文件名即品牌 slug，运行时直接当普通图片加载。
  *
+ * 特例：bvlgari（宝格丽）**不再从旧雪碧图取图**。旧素材里宝格丽 tile 只有一条
+ *   金色细横线 + 肉眼不可辨的微小文字，在棋盘上没有可识别符号（Issue 反馈
+ *   「图标看不清楚」）。故改为按品牌识别元素**程序化重绘**：墨绿卡面 + 金色
+ *   BVLGARI-BVLGARI 经典同心圆/方框宝石符号 + 大号 BVLGARI 字标，
+ *   由 buildBvlgariSvg() 生成，再做 4x 超采样降采样，风格与其余 11 张一致。
+ *
  * 输出：public/tiles/<brand>@<scale>x.png（共 12 品牌 x 3 档 = 36 张）
  * 用法：node scripts/generate-tile-textures.mjs
  */
@@ -36,7 +42,11 @@ const OUT_DIR = path.join(ROOT, 'public/tiles');
 const TILE = 256;
 const COLS = 3;
 
-/** 行主序品牌顺序（必须与雪碧图 / brands.ts 保持一致） */
+/**
+ * 行主序品牌顺序（必须与雪碧图 / brands.ts 保持一致）。
+ * 注意：`bvlgari` 仅用于保持序位/文件命名一致，其贴图由
+ * buildBvlgariTiles() 程序化重绘，不再从雪碧图裁切（见文件头说明）。
+ */
 const ORDER = [
   'gucci', 'celine', 'hermes',
   'ysl', 'prada', 'chanel',
@@ -149,6 +159,83 @@ function denoiseWhiteHalo(rgba, size, radius = 3) {
 }
 
 /* ------------------------------------------------------------------ */
+/* 宝格丽程序化重绘                                                     */
+/* ------------------------------------------------------------------ */
+
+/** 宝格丽品牌色：墨绿卡面 + 金色符号/字标（高对比，远距离可辨） */
+const BVLGARI_GREEN = '#0E5236';
+const BVLGARI_GREEN_DARK = '#0A3C28';
+const BVLGARI_GOLD = '#D4AF37';
+const BVLGARI_GOLD_LIGHT = '#F0D98C';
+
+/**
+ * 生成宝格丽 tile 的矢量源图（以 256px 为设计基准，按 size 等比放大）。
+ *
+ * 辨识度设计：
+ *  - 卡面：墨绿渐变圆角矩形 + 金色内描边，与其余品牌卡片的圆角/描边规格一致；
+ *  - 符号：BVLGARI-BVLGARI 经典「方框套同心圆 + 中心圆点」宝石符号，居中偏上；
+ *  - 字标：大号 Georgia 衬线 BVLGARI（占卡面宽度约 80%）+ 底部 ROMA 副标。
+ * 三者叠加后即便缩到 48px，也能靠「墨绿 + 金环」配色和字标轮廓认出来。
+ */
+function buildBvlgariSvg(size) {
+  const s = size / 256;
+  const P = (v) => v * s;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+  <defs>
+    <linearGradient id="face" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0%" stop-color="#127048"/>
+      <stop offset="55%" stop-color="${BVLGARI_GREEN}"/>
+      <stop offset="100%" stop-color="${BVLGARI_GREEN_DARK}"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="${BVLGARI_GOLD_LIGHT}"/>
+      <stop offset="45%" stop-color="${BVLGARI_GOLD}"/>
+      <stop offset="100%" stop-color="#A8811F"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="${P(6)}" y="${P(6)}" width="${P(244)}" height="${P(244)}" rx="${P(46)}" fill="url(#face)"/>
+  <rect x="${P(6)}" y="${P(6)}" width="${P(244)}" height="${P(244)}" rx="${P(46)}"
+        fill="none" stroke="url(#gold)" stroke-width="${P(3)}" stroke-opacity="0.95"/>
+
+  <g transform="translate(${P(128)},${P(88)})">
+    <rect x="${P(-44)}" y="${P(-44)}" width="${P(88)}" height="${P(88)}" rx="${P(13)}"
+          fill="none" stroke="url(#gold)" stroke-width="${P(8.5)}"/>
+    <circle r="${P(28)}" fill="none" stroke="url(#gold)" stroke-width="${P(11)}"/>
+    <circle r="${P(11)}" fill="url(#gold)"/>
+  </g>
+
+  <text x="${P(128)}" y="${P(172)}" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia, 'Times New Roman', serif" font-weight="700"
+        font-size="${P(38)}" letter-spacing="${P(2)}"
+        fill="url(#gold)">BVLGARI</text>
+  <text x="${P(128)}" y="${P(206)}" text-anchor="middle" dominant-baseline="central"
+        font-family="Montserrat, Arial, sans-serif" font-weight="600"
+        font-size="${P(13)}" letter-spacing="${P(6)}"
+        fill="${BVLGARI_GOLD_LIGHT}" fill-opacity="0.9">ROMA</text>
+  </svg>`;
+}
+
+/** 矢量源图渲染基准（4x 超采样，保证圆角/笔画抗锯齿干净） */
+const BVLGARI_RENDER_SIZE = 1024;
+
+/** 输出宝格丽 3 档贴图，返回产物路径列表 */
+async function buildBvlgariTiles() {
+  const source = Buffer.from(buildBvlgariSvg(BVLGARI_RENDER_SIZE));
+  const outs = [];
+  for (const scale of SCALES) {
+    const size = TILE * scale;
+    const out = path.join(OUT_DIR, `bvlgari@${scale}x.png`);
+    await sharp(source, { density: 384 })
+      .resize(size, size, { kernel: 'lanczos3', fit: 'fill' })
+      .png({ compressionLevel: 9, adaptiveFiltering: true })
+      .toFile(out);
+    outs.push(out);
+  }
+  return outs;
+}
+
+/* ------------------------------------------------------------------ */
 /* 主流程                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -167,6 +254,18 @@ async function main() {
   const report = [];
   for (let i = 0; i < ORDER.length; i++) {
     const name = ORDER[i];
+
+    // 宝格丽改为程序化重绘（旧素材无可识别符号），不走雪碧图裁切分支
+    if (name === 'bvlgari') {
+      const outs = await buildBvlgariTiles();
+      report.push(
+        `  ${name.padEnd(13)} → ${name}@{${SCALES.join(',')}}x.png  [${SCALES.map(
+          (s) => TILE * s
+        ).join(' / ')}px]  (程序化重绘, ${outs.length} 张)`
+      );
+      continue;
+    }
+
     const col = i % COLS;
     const row = Math.floor(i / COLS);
     const x0 = col * TILE;
