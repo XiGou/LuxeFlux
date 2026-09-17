@@ -207,61 +207,277 @@ export function loadTiles(
 /* 限量版（限量配货）强化高亮素材                                       */
 /* ------------------------------------------------------------------ */
 
-/** 限量版底光纹理 key */
-export const LIMIT_GLOW_KEY = 'limited-glow';
-/** 限量版斜向流光纹理 key */
-export const LIMIT_SHINE_KEY = 'limited-shine';
+/**
+ * 限量版高亮 = 引擎级多层光效，全部走 Canvas 程序化纹理 + ADD 加色混合，
+ * 不使用「大矩形描边」这种一眼假的做法：
+ *
+ *   1. HALO      ── 柔和径向金色光晕（预乘 alpha，加色后像真的在发光）
+ *   2. GLOWFALL  ── 玻璃高光切面（顶端细亮线 + 斜向切角，卡面像被射灯扫到）
+ *   3. SWEEP     ── 硬边斜向流光带（窄、亮、边缘锐利，像镀金表面的镜面反光）
+ *   4. TWINKLE   ── 四芒星星芒（引擎粒子贴图，限量版方块周围持续闪星）
+ *   5. MOTES     ── 金色浮尘粒子（缓慢上浮，制造「空气里有金粉」的奢侈感）
+ */
+export const LIMIT_HALO_KEY = 'limited-halo';
+export const LIMIT_GLOSS_KEY = 'limited-gloss';
+export const LIMIT_SWEEP_KEY = 'limited-sweep';
+export const LIMIT_TWINKLE_KEY = 'limited-twinkle';
 
-/** 金色径向光晕（限量版底光，加色混合后自带「打光」感） */
-export function registerLimitedGlowTexture(scene: Phaser.Scene): string {
-  if (scene.textures.exists(LIMIT_GLOW_KEY)) return LIMIT_GLOW_KEY;
-  const S = 128;
+/** 兼容旧引用（旧版底光 / 流光的纹理 key，仍以新素材注册） */
+export const LIMIT_GLOW_KEY = LIMIT_HALO_KEY;
+export const LIMIT_SHINE_KEY = LIMIT_SWEEP_KEY;
+
+/**
+ * 柔和径向金色光晕（限量版「在发光」的氛围层）。
+ *
+ * ⚠️ 两个关键点，否则加色混合后会看到「一个方框」而不是光：
+ *  1. **预乘 alpha**：每一圈的颜色都乘上自己的 alpha，中心近白、边缘全黑透明，
+ *     加色叠加时亮度随半径平滑衰减到 0（不做预乘会出现「淡褐色圆盘」）。
+ *  2. **光斑必须远小于纹理尺寸**：可见光锥只占到纹理半径的 ~62%，
+ *     外圈留给纯透明，缩放后四角绝不会出现方形边界。
+ */
+export function registerLimitedHaloTexture(scene: Phaser.Scene): string {
+  if (scene.textures.exists(LIMIT_HALO_KEY)) return LIMIT_HALO_KEY;
+  const S = 256;
   const c = S / 2;
   const canvas = document.createElement('canvas');
   canvas.width = S;
   canvas.height = S;
   const ctx = canvas.getContext('2d')!;
-  const grad = ctx.createRadialGradient(c, c, 0, c, c, c);
-  grad.addColorStop(0, 'rgba(255,236,170,0.95)');
-  grad.addColorStop(0.34, 'rgba(255,208,110,0.62)');
-  grad.addColorStop(0.68, 'rgba(212,175,55,0.26)');
-  grad.addColorStop(1, 'rgba(212,175,55,0)');
+
+  // 光斑半径只取纹理半径的 0.62 倍 → 纹理四周有大片「零」余量
+  const R = c * 0.62;
+  const grad = ctx.createRadialGradient(c, c, 0, c, c, R);
+  const stops: [number, number[]][] = [
+    [0.0, [255, 252, 236, 255]],
+    [0.16, [255, 240, 190, 168]],
+    [0.34, [252, 220, 140, 96]],
+    [0.52, [226, 186, 84, 48]],
+    [0.72, [168, 126, 40, 18]],
+    [0.88, [120, 88, 22, 5]],
+    [1.0, [96, 68, 12, 0]]
+  ];
+  for (const [pos, [r, g, b, a]] of stops) {
+    const k = a / 255;
+    grad.addColorStop(pos, `rgba(${Math.round(r * k)},${Math.round(g * k)},${Math.round(b * k)},${k})`);
+  }
   ctx.fillStyle = grad;
   ctx.beginPath();
-  ctx.arc(c, c, c, 0, Math.PI * 2);
+  ctx.arc(c, c, R, 0, Math.PI * 2);
   ctx.fill();
-  scene.textures.addCanvas(LIMIT_GLOW_KEY, canvas);
-  return LIMIT_GLOW_KEY;
+
+  scene.textures.addCanvas(LIMIT_HALO_KEY, canvas);
+  return LIMIT_HALO_KEY;
 }
 
-/** 斜向流光条（中间亮、两端透明，划过卡面时像镀金反光） */
-export function registerLimitedShineTexture(scene: Phaser.Scene): string {
-  if (scene.textures.exists(LIMIT_SHINE_KEY)) return LIMIT_SHINE_KEY;
-  const W = 48;
-  const H = 192;
+/**
+ * 玻璃高光切面：左上角细亮线 + 斜向切角高光 + 底部反光。
+ * 贴到卡面之上（ADD）后，卡片会像「装在玻璃专柜盒里被射灯打亮」。
+ */
+export function registerLimitedGlossTexture(scene: Phaser.Scene): string {
+  if (scene.textures.exists(LIMIT_GLOSS_KEY)) return LIMIT_GLOSS_KEY;
+  const S = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = S;
+  canvas.height = S;
+  const ctx = canvas.getContext('2d')!;
+  // 内缩 7%：高光只画在卡面内部，配合圆形裁切后绝不会溢出到相邻格子
+  const p = S * 0.07;
+  const w = S - p * 2;
+
+  // 左上棱边高光（沿上边 / 左边，柔和衰减）
+  const edge = ctx.createLinearGradient(0, 0, S * 0.75, S * 0.75);
+  edge.addColorStop(0, 'rgba(255,255,255,1)');
+  edge.addColorStop(0.4, 'rgba(255,244,206,0.5)');
+  edge.addColorStop(1, 'rgba(255,220,140,0)');
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = 3.4;
+  ctx.beginPath();
+  ctx.moveTo(p, p + 4);
+  ctx.lineTo(S - p, p + 4);
+  ctx.moveTo(p + 4, p);
+  ctx.lineTo(p + 4, S - p);
+  ctx.stroke();
+
+  // 右下反光边（与左上对角呼应，做出「玻璃砖」的立体感）
+  const lower = ctx.createLinearGradient(S, S, S * 0.62, S * 0.62);
+  lower.addColorStop(0, 'rgba(255,236,180,0.5)');
+  lower.addColorStop(1, 'rgba(255,236,180,0)');
+  ctx.strokeStyle = lower;
+  ctx.lineWidth = 2.6;
+  ctx.beginPath();
+  ctx.moveTo(S - p - 58, S - p);
+  ctx.lineTo(S - p, S - p - 58);
+  ctx.stroke();
+
+  // 左上斜切角（细边，勾出玻璃棱面，不铺大面积白）
+  const facet = ctx.createLinearGradient(0, 0, S * 0.42, S * 0.42);
+  facet.addColorStop(0, 'rgba(255,255,255,0.62)');
+  facet.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.strokeStyle = facet;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(p + 2, S * 0.3);
+  ctx.lineTo(S * 0.3, p + 2);
+  ctx.stroke();
+
+  void w;
+  scene.textures.addCanvas(LIMIT_GLOSS_KEY, canvas);
+  return LIMIT_GLOSS_KEY;
+}
+
+/**
+ * 硬边斜向流光带：窄（约占卡宽 18%）、中心接近纯白、两侧 3px 内迅速衰减。
+ * 与旧版「宽而糊的白色拖影」不同，它扫过卡面时像镜面镀金的反光带。
+ */
+export function registerLimitedSweepTexture(scene: Phaser.Scene): string {
+  if (scene.textures.exists(LIMIT_SWEEP_KEY)) return LIMIT_SWEEP_KEY;
+  const W = 96;
+  const H = 256;
   const canvas = document.createElement('canvas');
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d')!;
+
   const grad = ctx.createLinearGradient(0, 0, W, 0);
-  grad.addColorStop(0, 'rgba(255,255,255,0)');
-  grad.addColorStop(0.5, 'rgba(255,248,214,0.85)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  grad.addColorStop(0.0, 'rgba(255,246,214,0)');
+  grad.addColorStop(0.34, 'rgba(255,240,190,0.30)');
+  grad.addColorStop(0.5, 'rgba(255,255,248,0.98)');
+  grad.addColorStop(0.66, 'rgba(255,240,190,0.30)');
+  grad.addColorStop(1.0, 'rgba(255,246,214,0)');
   ctx.fillStyle = grad;
-  // 上下两端淡出，避免出现生硬的矩形边
+  ctx.fillRect(0, 0, W, H);
+
+  // 中心再叠一条更细的高亮芯
+  const core = ctx.createLinearGradient(0, 0, W, 0);
+  core.addColorStop(0.0, 'rgba(255,255,255,0)');
+  core.addColorStop(0.46, 'rgba(255,255,255,0)');
+  core.addColorStop(0.5, 'rgba(255,255,255,0.95)');
+  core.addColorStop(0.54, 'rgba(255,255,255,0)');
+  core.addColorStop(1.0, 'rgba(255,255,255,0)');
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = core;
+  ctx.fillRect(0, 0, W, H);
+
+  // 上下两端淡出（避免出现生硬矩形边）
   const vgrad = ctx.createLinearGradient(0, 0, 0, H);
   vgrad.addColorStop(0, 'rgba(0,0,0,1)');
-  vgrad.addColorStop(0.18, 'rgba(0,0,0,0)');
-  vgrad.addColorStop(0.82, 'rgba(0,0,0,0)');
+  vgrad.addColorStop(0.14, 'rgba(0,0,0,0)');
+  vgrad.addColorStop(0.86, 'rgba(0,0,0,0)');
   vgrad.addColorStop(1, 'rgba(0,0,0,1)');
   ctx.globalCompositeOperation = 'destination-out';
   ctx.fillStyle = vgrad;
   ctx.fillRect(0, 0, W, H);
-  ctx.globalCompositeOperation = 'source-over';
+
+  scene.textures.addCanvas(LIMIT_SWEEP_KEY, canvas);
+  return LIMIT_SWEEP_KEY;
+}
+
+/** 四芒星星芒（限量版闪光粒子贴图，ADD 混合后像钻石折射的十字光） */
+export function registerLimitedTwinkleTexture(scene: Phaser.Scene): string {
+  if (scene.textures.exists(LIMIT_TWINKLE_KEY)) return LIMIT_TWINKLE_KEY;
+  const S = 64;
+  const c = S / 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = S;
+  canvas.height = S;
+  const ctx = canvas.getContext('2d')!;
+
+  // 核心光点
+  const core = ctx.createRadialGradient(c, c, 0, c, c, S * 0.16);
+  core.addColorStop(0, 'rgba(255,255,255,1)');
+  core.addColorStop(0.5, 'rgba(255,244,204,0.75)');
+  core.addColorStop(1, 'rgba(255,232,170,0)');
+  ctx.fillStyle = core;
+  ctx.fillRect(0, 0, S, S);
+
+  // 十字光芒（两片细长菱形）
+  ctx.globalCompositeOperation = 'lighter';
+  const drawSpike = (rot: number, len: number, wid: number) => {
+    ctx.save();
+    ctx.translate(c, c);
+    ctx.rotate(rot);
+    const g = ctx.createLinearGradient(-len, 0, len, 0);
+    g.addColorStop(0, 'rgba(255,240,190,0)');
+    g.addColorStop(0.5, 'rgba(255,255,246,0.95)');
+    g.addColorStop(1, 'rgba(255,240,190,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(-len, 0);
+    ctx.lineTo(0, -wid);
+    ctx.lineTo(len, 0);
+    ctx.lineTo(0, wid);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  };
+  drawSpike(0, c * 0.98, 1.6);
+  drawSpike(Math.PI / 2, c * 0.98, 1.6);
+  drawSpike(Math.PI / 4, c * 0.52, 1.1);
+  drawSpike(-Math.PI / 4, c * 0.52, 1.1);
+
+  scene.textures.addCanvas(LIMIT_TWINKLE_KEY, canvas);
+  return LIMIT_TWINKLE_KEY;
+}
+
+/**
+ * 射灯光柱：从卡面向上打的锥形光（专柜顶灯照在作品上）。
+ * 用上宽下窄的梯形 + 双向淡出，避免「拉伸的圆形光斑」看起来是个方块。
+ */
+export const LIMIT_SHAFT_KEY = 'limited-shaft';
+export function registerLimitedShaftTexture(scene: Phaser.Scene): string {
+  if (scene.textures.exists(LIMIT_SHAFT_KEY)) return LIMIT_SHAFT_KEY;
+  const W = 128;
+  const H = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d')!;
+
+  // 锥形本体：底部窄（贴卡面）、顶部宽（射灯散开）
+  const grad = ctx.createLinearGradient(0, H, 0, 0);
+  grad.addColorStop(0, 'rgba(255,244,205,0.55)');
+  grad.addColorStop(0.45, 'rgba(255,236,175,0.22)');
+  grad.addColorStop(1, 'rgba(255,228,150,0)');
   ctx.fillStyle = grad;
-  ctx.fillRect(W * 0.28, H * 0.18, W * 0.44, H * 0.64);
-  scene.textures.addCanvas(LIMIT_SHINE_KEY, canvas);
-  return LIMIT_SHINE_KEY;
+  ctx.beginPath();
+  ctx.moveTo(W * 0.36, H);
+  ctx.lineTo(W * 0.64, H);
+  ctx.lineTo(W * 0.94, 0);
+  ctx.lineTo(W * 0.06, 0);
+  ctx.closePath();
+  ctx.fill();
+
+  // 左右两侧再做一次横向淡出，消除锥形的硬边
+  const hgrad = ctx.createLinearGradient(0, 0, W, 0);
+  hgrad.addColorStop(0, 'rgba(0,0,0,1)');
+  hgrad.addColorStop(0.22, 'rgba(0,0,0,0)');
+  hgrad.addColorStop(0.78, 'rgba(0,0,0,0)');
+  hgrad.addColorStop(1, 'rgba(0,0,0,1)');
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.fillStyle = hgrad;
+  ctx.fillRect(0, 0, W, H);
+
+  scene.textures.addCanvas(LIMIT_SHAFT_KEY, canvas);
+  return LIMIT_SHAFT_KEY;
+}
+
+/** 一次性注册限量版全部光效素材 */
+export function registerLimitedTextures(scene: Phaser.Scene): void {
+  registerLimitedHaloTexture(scene);
+  registerLimitedGlossTexture(scene);
+  registerLimitedSweepTexture(scene);
+  registerLimitedTwinkleTexture(scene);
+  registerLimitedShaftTexture(scene);
+}
+
+/** 旧 API：保留（等价于注册全部限量版素材） */
+export function registerLimitedGlowTexture(scene: Phaser.Scene): string {
+  return registerLimitedHaloTexture(scene);
+}
+
+/** 旧 API：保留（注册流光带素材） */
+export function registerLimitedShineTexture(scene: Phaser.Scene): string {
+  return registerLimitedSweepTexture(scene);
 }
 
 /** 金色粒子纹理（径向渐变圆点） */

@@ -27,6 +27,7 @@ import {
   movesReward,
   BUNDLE_MOVE_COST,
   BUNDLE_UNITS,
+  BUNDLE_USES_PER_GAME,
   POWER_UPS
 } from './utils/gameLogic';
 import {
@@ -48,11 +49,12 @@ const IDLE_ANIM = { phase: 'idle' as const, swapping: [], clearing: [], cascade:
 
 export default function App() {
   const [game, setGame] = useState<GameState>(() => createInitialState());
-  const [powerUpUses, setPowerUpUses] = useState<Record<PowerUpType, number>>({
-    greenChannel: POWER_UPS.greenChannel.uses,
+  // 道具剩余次数（整局内有效）：整柜打包整局仅 1 次，由 BUNDLE_USES_PER_GAME 统一约束
+  const [powerUpUses, setPowerUpUses] = useState<Record<PowerUpType, number>>(() => ({
+    greenChannel: BUNDLE_USES_PER_GAME,
     markup: POWER_UPS.markup.uses,
     resell: POWER_UPS.resell.uses
-  });
+  }));
   const [activePowerUp, setActivePowerUp] = useState<PowerUpType | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [checkoutMode, setCheckoutMode] = useState(false);
@@ -272,6 +274,8 @@ export default function App() {
       if (usesRef.current[type] <= 0) return;
 
       if (type === 'greenChannel') {
+        // 整柜打包整局只有一次：已用完就不再进入指定模式
+        if (usesRef.current.greenChannel <= 0) return;
         // 切换「指定模式」：等用户点格子
         setActivePowerUp((cur) => (cur === 'greenChannel' ? null : 'greenChannel'));
         powerUpHaptic();
@@ -388,8 +392,9 @@ export default function App() {
   const handleRestart = useCallback(() => {
     const fresh = createInitialState();
     setGame(fresh);
+    // 整柜打包是整局一次的特权：重开一局才恢复
     setPowerUpUses({
-      greenChannel: POWER_UPS.greenChannel.uses,
+      greenChannel: BUNDLE_USES_PER_GAME,
       markup: POWER_UPS.markup.uses,
       resell: POWER_UPS.resell.uses
     });
@@ -484,7 +489,7 @@ export default function App() {
               <div className="mt-2 flex items-center justify-center gap-1.5 rounded-full border border-gold/40 bg-gold/10 px-4 py-1.5">
                 <Sparkles className="h-3.5 w-3.5 text-gold-bright" />
                 <span className="font-body text-xs text-gold-bright">
-                  绿色通道已开启：点击棋盘任意格，消除其 3×3 范围
+                  绿色通道已开启（整局仅此一次）：点击任意格，打包其 3×3 范围
                 </span>
               </div>
             )}
