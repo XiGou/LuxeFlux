@@ -4,20 +4,28 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Luxury high-contrast palette
+        // Luxe 浅色奢华配色：奶白 / 香槟金
+        // 「纸感」奶白底 + 低饱和金线，靠留白与材质而非深色压场
         ink: {
-          DEFAULT: '#0A0A0A', // 高冷黑
-          soft: '#121212',
-          panel: '#17171A',
-          line: '#26262B'
+          DEFAULT: '#FBF8F1', // 主背景：奶白（暖调，非纯白）
+          soft: '#F6F1E5', // 次级面板：浅奶油
+          panel: '#FFFDF8', // 卡片浮层：近乎纯白，微微暖
+          line: '#E6DCC6', // 分隔线：淡金砂
+          deep: '#3A3226' // 深棕（仅用于正文/反色元素）
         },
         gold: {
-          DEFAULT: '#D4AF37', // 香檳金
-          bright: '#F0D68A', // 高光金
-          deep: '#9A7B2D',
-          glow: 'rgba(212,175,55,0.35)'
+          DEFAULT: '#C8A44D', // 香檳金（浅底上略带深，保证描边可读）
+          bright: '#B9912F', // 强调金：比 DEFAULT 更深，用于文字保证对比度
+          deep: '#8C6D22', // 深金：边框/阴影
+          soft: '#EBD9A8', // 浅金：渐变/填充
+          glow: 'rgba(200,164,77,0.28)'
         },
-        ivory: '#F5F5F7' // 象牙白
+        ivory: {
+          DEFAULT: '#3A3226', // 正文：深摩卡棕（替代原象牙白文字）
+          soft: '#7A6E58' // 次级文字：灰棕
+        },
+        cream: '#FFFDF8',
+        champagne: '#F3E7C9'
       },
       fontFamily: {
         // 標題: Serif 襯線體 → VOGUE / ELLE 時尚雜誌感
@@ -26,16 +34,19 @@ export default {
         body: ['"Montserrat"', '"Helvetica Neue"', 'Arial', 'sans-serif']
       },
       boxShadow: {
-        'gold-glow': '0 0 18px rgba(212,175,55,0.35), 0 0 42px rgba(212,175,55,0.12)',
-        'gold-inner': 'inset 0 1px 0 rgba(240,214,138,0.55), inset 0 -2px 6px rgba(0,0,0,0.55)',
-        'metal-cell': 'inset 0 1px 0 rgba(255,255,255,0.06), inset 0 -2px 5px rgba(0,0,0,0.7)'
+        'gold-glow': '0 6px 18px rgba(140,109,34,0.18), 0 2px 6px rgba(140,109,34,0.12)',
+        'gold-inner': 'inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -2px 6px rgba(140,109,34,0.18)',
+        'metal-cell': 'inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -2px 5px rgba(140,109,34,0.15)',
+        'card-soft': '0 1px 2px rgba(140,109,34,0.08), 0 8px 24px rgba(140,109,34,0.10)'
       },
       backgroundImage: {
-        'gold-gradient': 'linear-gradient(135deg, #F0D68A 0%, #D4AF37 45%, #9A7B2D 100%)',
+        'gold-gradient': 'linear-gradient(135deg, #EFDCAB 0%, #D4AF37 45%, #B9912F 100%)',
         'gold-text':
-          'linear-gradient(180deg, #F7E7B4 0%, #D4AF37 38%, #9A7B2D 62%, #E8C96A 100%)',
+          'linear-gradient(180deg, #C9A63F 0%, #9E7C24 45%, #C8A44D 100%)',
         'metal-panel':
-          'linear-gradient(160deg, rgba(255,255,255,0.045) 0%, rgba(255,255,255,0) 40%, rgba(0,0,0,0.35) 100%)'
+          'linear-gradient(160deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.35) 40%, rgba(200,164,77,0.12) 100%)',
+        'cream-panel':
+          'linear-gradient(160deg, #FFFDF8 0%, #F9F4E9 55%, #F1E9D6 100%)'
       },
       keyframes: {
         shimmer: {

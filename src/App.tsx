@@ -452,11 +452,12 @@ export default function App() {
   }, []);
 
   return (
-    <div className="flex min-h-screen flex-col bg-ink text-ivory">
-      {/* 背景装饰 */}
+    <div className="flex min-h-screen flex-col bg-transparent text-ivory">
+      {/* 背景装饰：奶白纸感底上的柔和香槟金光晕 */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -left-24 -top-24 h-72 w-72 rounded-full bg-gold/10 blur-[100px]" />
-        <div className="absolute -bottom-32 -right-20 h-80 w-80 rounded-full bg-gold/5 blur-[120px]" />
+        <div className="absolute -left-24 -top-24 h-72 w-72 rounded-full bg-gold/15 blur-[100px]" />
+        <div className="absolute -bottom-32 -right-20 h-80 w-80 rounded-full bg-gold/10 blur-[120px]" />
+        <div className="absolute left-1/2 top-1/3 h-64 w-64 -translate-x-1/2 rounded-full bg-champagne/40 blur-[110px]" />
       </div>
 
       <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col">
@@ -486,9 +487,9 @@ export default function App() {
           {/* Green Channel 提示 */}
           <AnimatePresence>
             {activePowerUp === 'greenChannel' && (
-              <div className="mt-2 flex items-center justify-center gap-1.5 rounded-full border border-gold/40 bg-gold/10 px-4 py-1.5">
-                <Sparkles className="h-3.5 w-3.5 text-gold-bright" />
-                <span className="font-body text-xs text-gold-bright">
+              <div className="mt-2 flex items-center justify-center gap-1.5 rounded-full border border-gold/40 bg-gold/10 px-4 py-1.5 shadow-card-soft">
+                <Sparkles className="h-3.5 w-3.5 text-gold-deep" />
+                <span className="font-body text-xs font-semibold text-gold-deep">
                   绿色通道已开启（整局仅此一次）：点击任意格，打包其 3×3 范围
                 </span>
               </div>
@@ -509,7 +510,7 @@ export default function App() {
           <div className="flex gap-3">
             <button
               onClick={handleRestart}
-              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-gold/30 bg-ink-soft px-4 py-3.5 font-body text-sm font-semibold text-ivory/80 transition hover:border-gold/60 hover:text-gold active:scale-95"
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-gold/40 bg-cream px-4 py-3.5 font-body text-sm font-semibold text-ivory transition hover:border-gold hover:bg-champagne active:scale-95"
             >
               <RotateCcw className="h-4 w-4" strokeWidth={2} />
               重新开始
@@ -517,7 +518,7 @@ export default function App() {
             <button
               onClick={handleCheckout}
               disabled={game.status !== 'playing'}
-              className="flex flex-[1.6] items-center justify-center gap-2 rounded-xl bg-gold-gradient px-4 py-3.5 font-body text-sm font-bold text-ink shadow-gold-glow transition hover:brightness-110 active:scale-95 disabled:opacity-40"
+              className="flex flex-[1.6] items-center justify-center gap-2 rounded-xl bg-gold-gradient px-4 py-3.5 font-body text-sm font-bold text-ink-deep shadow-gold-glow ring-1 ring-gold-deep/30 transition hover:brightness-105 active:scale-95 disabled:opacity-40"
             >
               <ShoppingCart className="h-4 w-4" strokeWidth={2.2} />
               结算 · {game.items} 件 / ${game.score.toLocaleString()}

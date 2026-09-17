@@ -19,8 +19,8 @@ body,
 }
 
 body {
-  background-color: #0a0a0a;
-  color: #f5f5f7;
+  background-color: #fbf8f1;
+  color: #3a3226;
   font-family: 'Montserrat', 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -29,8 +29,12 @@ body {
   user-select: none;
   -webkit-user-select: none;
   touch-action: manipulation;
-  /* WebView 深色背景，避免白閃 */
-  background: #0a0a0a;
+  /* WebView 背景与页面同色，避免加载瞬间的色差闪烁 */
+  background: #fbf8f1;
+  /* 奶白纸感底：柔和金色光斑，替代纯色平铺 */
+  background-image: radial-gradient(120% 80% at 12% 0%, rgba(212,175,55,0.10) 0%, rgba(212,175,55,0) 55%),
+    radial-gradient(110% 70% at 100% 100%, rgba(200,164,77,0.10) 0%, rgba(200,164,77,0) 60%);
+  background-attachment: fixed;
 }
 
 /* 禁止圖片/圖示被拖拽 */
