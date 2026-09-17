@@ -17,6 +17,8 @@ import {
   UNIT_PRICE,
   BUNDLE_UNITS,
   BUNDLE_MOVE_COST,
+  BUNDLE_USES_PER_GAME,
+  POWER_UPS,
   movesReward,
   longestSegment,
   MOVES_REWARD_CAP,
@@ -161,10 +163,35 @@ for (let i = 0; i < 50; i++) {
   const mk = useMarkup(b);
   const limitedCount = (mk.board as Cell[]).filter((c) => c.limited).length;
   assert(limitedCount > 0, 'markup upgrades at least one cell');
+  // 限量配货只升级「一种」品牌，且不改变盘面结构（只加高亮标记）
+  const limitedTypes = new Set((mk.board as Cell[]).filter((c) => c.limited).map((c) => c.type));
+  assert(limitedTypes.size === 1, 'markup upgrades exactly one brand');
+  assert(
+    (mk.board as Cell[]).every((c, i) => c.type === b[i].type),
+    'markup keeps board layout intact'
+  );
 
   const rs = useResell(b);
   assert(!hasMatches(rs.board as Cell[]), 'resell no initial match');
   assert(hasValidMove(rs.board as Cell[]), 'resell has valid move');
+}
+
+// 4a. 整柜打包是「整局一次」的特权
+{
+  assert(BUNDLE_USES_PER_GAME === 1, 'bundle pack is once per game');
+  assert(
+    POWER_UPS.greenChannel.uses === BUNDLE_USES_PER_GAME,
+    'green channel advertised uses equals the once-per-game limit'
+  );
+  // 道具说明需明确写出「一次」这一约束
+  assert(POWER_UPS.greenChannel.description.includes('一次'), 'green channel description states once-per-game');
+  // 每次打包都固定 2 件 + 固定扣步，即使用满一次也不会数值膨胀
+  const b = generateBoard();
+  for (let i = 0; i < 5; i++) {
+    const gc = useGreenChannel(b, 27);
+    assert(gc.score === priceOf(BUNDLE_UNITS), 'bundle units never scale with usage');
+    assert(gc.moves === -BUNDLE_MOVE_COST, 'bundle move cost never scales with usage');
+  }
 }
 
 // 4b. 奖励步数：只有超额匹配（4 连 / 5 连）与连消才加，且有上限

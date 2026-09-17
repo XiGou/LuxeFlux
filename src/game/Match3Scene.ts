@@ -15,10 +15,12 @@ import { ROWS, COLS } from '../utils/gameLogic';
 import {
   ensureTokenTexture,
   registerSparkTexture,
-  registerLimitedGlowTexture,
-  registerLimitedShineTexture,
-  LIMIT_GLOW_KEY,
-  LIMIT_SHINE_KEY,
+  registerLimitedTextures,
+  LIMIT_HALO_KEY,
+  LIMIT_GLOSS_KEY,
+  LIMIT_SWEEP_KEY,
+  LIMIT_TWINKLE_KEY,
+  LIMIT_SHAFT_KEY,
   registerCoinTexture,
   registerBillTexture,
   loadTiles,
@@ -47,18 +49,42 @@ export const SCENE_READY: { callbacks: Set<() => void>; done: boolean } = {
   done: false
 };
 
-/** 每个方块的运行期展示对象 */
+/**
+ * 每个方块的运行期展示对象。
+ *
+ * 限量版方块 = 一组「同一容器内的多层显示对象」，而不是往场景里撒一堆散件：
+ * 这样交换 / 下落 / 消除时只需同步容器坐标，装饰天然跟随，
+ * 也不会在下落过程中出现「光晕还在原地」的错位。
+ *
+ * 层级（container 内 depth）：
+ *   -10  halo     柔性径向光晕（ADD）
+ *    -6  shaft    柱状光柱（ADD，从卡面向上打的射灯）
+ *     2  swept    贯穿卡面的斜向流光（ADD，切在同一容器的 mask 内）
+ *     1  sprite   卡面贴图
+ *     6  gloss    玻璃高光切面（ADD）
+ *     7  frame    金环（Graphics）
+ */
 interface TokenView {
   cell: Cell;
   sprite: Phaser.GameObjects.Image;
   /** 限量版 / 爆破 / 炸弹的金色描边容器 */
   frame?: Phaser.GameObjects.Graphics;
-  /** 限量版专属：卡片底部的旋转金色光晕 */
-  glow?: Phaser.GameObjects.Image;
-  /** 限量版专属：斜向流光（缓慢划过卡面，远距离也能瞥见） */
-  shine?: Phaser.GameObjects.Image;
-  /** 限量版专属：呼吸脉冲 Tween */
+  /** 限量版专属：柔性光晕 + 光柱 + 玻璃高光 + 流动流光 的容器 */
+  fx?: Phaser.GameObjects.Container;
+  /** 限量版专属：柔和径向光晕（呼吸 + 缓慢旋转） */
+  halo?: Phaser.GameObjects.Image;
+  /** 限量版专属：柱状射灯光柱 */
+  shaft?: Phaser.GameObjects.Image;
+  /** 限量版专属：斜向流光带（持续扫过卡面） */
+  sweep?: Phaser.GameObjects.Image;
+  /** 限量版专属：玻璃高光切面 */
+  gloss?: Phaser.GameObjects.Image;
+  /** 限量版专属：持续闪星 emitter（四芒星，限量版方块周围不断闪烁） */
+  twinkle?: Phaser.GameObjects.Particles.ParticleEmitter;
+  /** 限量版专属：呼吸脉冲 Tween（光晕 / 金环 / 高光同步） */
   pulse?: Phaser.Tweens.Tween;
+  /** 限量版专属：持续循环的装饰 Tween（自转 / 呼吸 / 流光扫动 / 星芒） */
+  twinkles?: Phaser.Tweens.Tween[];
 }
 
 /** 场景可交互开关（组件卸载时关闭） */
@@ -94,6 +120,8 @@ export default class Match3Scene extends Phaser.Scene {
   private billEmitter!: Phaser.GameObjects.Particles.ParticleEmitter;
   /** 拖拽「撒钱」拖尾粒子 */
   private trailEmitter!: Phaser.GameObjects.Particles.ParticleEmitter;
+  /** 限量版「金字招牌」：沿高亮方块边框缓慢流动的金色光点（每帧重绘） */
+  private limelight!: Phaser.GameObjects.Graphics;
   /** 上次拖尾发射时间（节流） */
   private trailAt = 0;
 
@@ -130,9 +158,8 @@ export default class Match3Scene extends Phaser.Scene {
     this.trailAt = 0;
 
     const sparkKey = registerSparkTexture(this);
-    // 限量版强化高亮的两个素材
-    registerLimitedGlowTexture(this);
-    registerLimitedShineTexture(this);
+    // 限量版强化高亮：光晕 / 玻璃高光 / 流光带 / 星芒 四套引擎素材
+    registerLimitedTextures(this);
 
     // 计算格子尺寸（决定贴图倍率），再按当前盘面用到的品牌加载独立贴图
     if (this.cellSize <= 0) this.computeMetrics();
@@ -214,10 +241,47 @@ export default class Match3Scene extends Phaser.Scene {
       })
       .setDepth(20);
 
+    // 限量版金字招牌：金色光点沿高亮方块边框流动（below 卡面，作为环境光）
+    this.limelight = this.add.graphics().setDepth(-2).setBlendMode(Phaser.BlendModes.ADD);
+
     INTERACTIVE.value = true;
     this.registerInput();
 
+
     this.scale.on('resize', this.handleResize, this);
+  }
+
+  /**
+   * 每帧：绘制「金字招牌」——金色光点沿每个限量版方块的金环流动。
+   *
+   * 用 Graphics 每帧重绘（只画少量描边点），成本极低，但视觉上是
+   * 「一圈流动的金光在牌子上打转」，这是纯 DOM 动画很难做自然的引擎级效果。
+   */
+  update(): void {
+    const g = this.limelight;
+    if (!g) return;
+    g.clear();
+    if (this.views.size === 0) return;
+    const t = this.time.now / 1000;
+    for (const view of this.views.values()) {
+      if (!view.cell.limited || !view.sprite.active) continue;
+      const size = view.sprite.displayWidth;
+      const half = size / 2;
+      const cx = view.sprite.x;
+      const cy = view.sprite.y;
+      // 4 颗光点绕行，相位错开 → 看起来是一串流光沿着边框跑
+      for (let k = 0; k < 4; k++) {
+        const a = ((t * 0.85 + k / 4) % 1) * Math.PI * 2;
+        const px = cx + Math.cos(a) * half * 1.18;
+        const py = cy + Math.sin(a) * half * 1.18;
+        // 光点亮度自身也有呼吸，跑起来更「闪」
+        const tw = 0.55 + 0.45 * Math.sin(t * 6 + k * 1.7);
+        g.fillStyle(0xfff8de, 0.75 * tw);
+        g.fillCircle(px, py, size * 0.075);
+        g.fillStyle(0xffd977, 0.4 * tw);
+        g.fillCircle(px, py, size * 0.15);
+      }
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -418,115 +482,262 @@ export default class Match3Scene extends Phaser.Scene {
   }
 
   /**
-   * 限量版标记：三重强化，保证任何距离/任何底图上都能一眼看出高亮。
-   *  1. 金环描边 + 向外发光（Graphics 双层 stroke + 内描边）
-   *  2. 卡片下方旋转金色光晕（呼吸脉冲）
-   *  3. 斜向流光持续划过卡面
-   * 非限量（仅爆破 / 炸弹）只保留描边，避免盘面过花。
+   * 限量版标记 = 「把游戏引擎的光效全开一遍」。
+   *
+   * 与旧版（大矩形描边 + 一块方方正正的光晕）完全不同，这里是 7 层叠加：
+   *
+   *  1. frame    金环：外宽内窄三层圆角描边（暗色卡片上也有对比）
+   *  2. halo     柔和径向光晕：ADD 混合 + 缓慢旋转 + 呼吸（真正的「在发光」）
+   *  3. shaft    射灯光柱：从卡面向上的锥形光柱，像专柜顶灯打在作品上
+   *  4. gloss    玻璃高光切面：左上棱边亮线 + 斜切面，卡片像装在玻璃柜里
+   *  5. sweep    斜向流光带：窄而硬的高光带持续扫过卡面（镀金反光）
+   *  6. twinkle  星芒粒子：四芒星在卡面周围不断爆闪
+   *  7. limelight 金字招牌：金色光点沿方块边框流动（全局 Graphics 绘制）
+   *
+   * 所有光效挂在同一个 Container 内，随方块移动 / 缩放 / 旋转，
+   * 交换、下落、消除全程不会出现「光效留在原地」的穿帮。
+   * 非限量（仅爆破 / 炸弹）只保留金环，避免盘面过花。
    */
   private addLimitedFrame(view: TokenView): void {
     const cell = view.cell;
     const isLimited = !!cell.limited;
-    const size = view.sprite.displayWidth;
+    const sprite = view.sprite;
+    const size = sprite.displayWidth;
     const half = size / 2;
+    // 卡面实际渲染圆角（贴图本身是圆角卡片，描边半径需与之贴合）
+    const radius = Math.max(6, size * 0.19);
 
     const graphics = this.add.graphics();
     if (isLimited) {
       // 外发光：宽描边 + 低透明度，做出光晕扩散感（同时充当「暗色卡片」的对比底）
-      graphics.lineStyle(14, LIMITED_GOLD, 0.22);
-      graphics.strokeRoundedRect(-half - 4, -half - 4, size + 8, size + 8, 20);
-      graphics.lineStyle(9, LIMITED_GOLD, 0.5);
-      graphics.strokeRoundedRect(-half - 2, -half - 2, size + 4, size + 4, 16);
+      graphics.lineStyle(Math.max(8, size * 0.11), LIMITED_GOLD, 0.16);
+      graphics.strokeRoundedRect(-half - size * 0.05, -half - size * 0.05, size * 1.1, size * 1.1, radius + size * 0.05);
+      graphics.lineStyle(Math.max(5, size * 0.07), LIMITED_GOLD, 0.34);
+      graphics.strokeRoundedRect(-half - size * 0.025, -half - size * 0.025, size * 1.05, size * 1.05, radius + size * 0.03);
       // 主金环：足够粗，缩到 40px 也还看得见
-      graphics.lineStyle(5, 0xfff6d8, 1);
-      graphics.strokeRoundedRect(-half - 0.5, -half - 0.5, size + 1, size + 1, 13);
-      graphics.lineStyle(3, 0xffffff, 0.95);
-      graphics.strokeRoundedRect(-half + 2.5, -half + 2.5, size - 5, size - 5, 11);
+      graphics.lineStyle(Math.max(2.5, size * 0.035), 0xffe9a8, 1);
+      graphics.strokeRoundedRect(-half, -half, size, size, radius);
+      // 内圈近白细线：给金环一道「金属倒角」
+      graphics.lineStyle(Math.max(1, size * 0.013), 0xffffff, 0.9);
+      graphics.strokeRoundedRect(-half + size * 0.04, -half + size * 0.04, size * 0.92, size * 0.92, radius * 0.82);
     } else {
-      graphics.lineStyle(4, 0xd4af37, 0.85);
-      graphics.strokeRoundedRect(-half, -half, size, size, 12);
+      // 爆破 / 炸弹符号：细金边（低调，不与限量配货的「高光主角」抢视线）
+      graphics.lineStyle(Math.max(1.6, size * 0.016), 0xd4af37, 0.7);
+      graphics.strokeRoundedRect(-half, -half, size, size, radius);
     }
-    graphics.setPosition(view.sprite.x, view.sprite.y);
-    graphics.setDepth(1);
     view.frame = graphics;
 
-    if (!isLimited) return;
+    if (!isLimited) {
+      // 普通方块（爆破 / 炸弹）：描边直接贴着精灵，无需容器
+      graphics.setPosition(sprite.x, sprite.y);
+      graphics.setDepth(1);
+      return;
+    }
 
-    // 底光：旋转的金色光斑，让限量版方块「自带打光」
-    const glow = this.add
-      .image(view.sprite.x, view.sprite.y, LIMIT_GLOW_KEY)
-      .setDisplaySize(size * 2.25, size * 2.25)
-      .setDepth(-1)
-      .setBlendMode(Phaser.BlendModes.ADD);
-    view.glow = glow;
+    /* ---------- 限量版：多层光效都放进同一个容器 ---------- */
 
-    // 流光：斜向高光条，缓慢划过卡面
-    const shine = this.add
-      .image(view.sprite.x, view.sprite.y, LIMIT_SHINE_KEY)
-      .setDisplaySize(size * 0.6, size * 2.3)
-      .setDepth(3)
+    // 光晕：卡面之外的柔和金色辉光（ADD 混合的径向柔光）。
+    // 强度刻意压低：光晕只负责「卡片在发光」的氛围，绝不能把卡面图案糊掉。
+    const halo = this.add
+      .image(0, 0, LIMIT_HALO_KEY)
+      .setDisplaySize(size * 1.85, size * 1.85)
       .setBlendMode(Phaser.BlendModes.ADD)
-      .setAlpha(0.85)
-      .setAngle(20);
-    view.shine = shine;
+      .setAlpha(0.95)
+      .setDepth(-10);
+    view.halo = halo;
 
-    // 呼吸脉冲：描边 + 流光轻微缩放，形成「活的高亮」
+    // 射灯光柱：从卡面向上的锥形光（专柜顶灯打在作品上）
+    const shaft = this.add
+      .image(0, -size * 0.52, LIMIT_SHAFT_KEY)
+      .setDisplaySize(size * 1.5, size * 1.9)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setAlpha(0.32)
+      .setDepth(-8);
+    view.shaft = shaft;
+
+    // 玻璃高光切面 + 斜向流光带：都用 Graphics 当遮罩，切在「卡面圆角矩形内」，
+    // 保证光只出现在卡片上，绝不会溢出到相邻格子上（旧版拖影发糊的根因）。
+    const maskShape = this.make.graphics({ x: 0, y: 0 }, false);
+    maskShape.fillStyle(0xffffff, 1);
+    maskShape.fillRoundedRect(-half, -half, size, size, radius);
+    const cardMask = maskShape.createGeometryMask();
+
+    // 玻璃棱边高光：只保留「上/左棱边细亮线 + 右下反光」，不覆盖卡面图案，
+    // 目的是把方块衬得更立体（像装在专柜玻璃盒里），而不是盖一层白。
+    const gloss = this.add
+      .image(0, 0, LIMIT_GLOSS_KEY)
+      .setDisplaySize(size, size)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setAlpha(0.5)
+      .setDepth(6);
+    gloss.setMask(cardMask);
+    view.gloss = gloss;
+
+    // 流动光带：窄而亮的金色光带斜向扫过卡面（镀金表面的镜面反光）
+    const sweep = this.add
+      .image(0, 0, LIMIT_SWEEP_KEY)
+      .setDisplaySize(size * 0.38, size * 1.7)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setAlpha(0.92)
+      .setDepth(3);
+    sweep.setMask(cardMask);
+    view.sweep = sweep;
+
+    // 星芒粒子：贴着卡片上沿不断爆闪（ADD 混合的十字星）
+    const twinkle = this.add
+      .particles(0, 0, LIMIT_TWINKLE_KEY, {
+        speed: { min: 6, max: 30 },
+        angle: { min: 0, max: 360 },
+        scale: { start: 0.2, end: 0.02, ease: 'Quad.easeIn' },
+        alpha: { start: 1, end: 0 },
+        rotate: { min: -40, max: 40 },
+        lifespan: { min: 460, max: 920 },
+        frequency: 300,
+        blendMode: Phaser.BlendModes.ADD,
+        particleBringToTop: false
+      })
+      .setDepth(7);
+    // 只在卡面「边圈」迸出（用 EdgeZone 沿方框边缘打星，卡面图案不受影响）
+    twinkle.addEmitZone({
+      type: 'edge',
+      source: new Phaser.Geom.Rectangle(-half * 1.02, -half * 1.02, size * 1.02, size * 1.02),
+      quantity: 1,
+      total: 18
+    });
+    view.twinkle = twinkle;
+
+    /* ---------- 动效编排 ---------- */
+
+    // 呼吸心跳：金环 + 光晕 + 高光同步脉动，像「活着的」高亮
     view.pulse = this.tweens.add({
-      targets: [graphics, shine],
-      scale: { from: 1, to: 1.045 },
-      duration: 780,
+      targets: [graphics, gloss],
+      scale: { from: 1, to: 1.05 },
+      duration: 900,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut'
     });
-    // 光晕自己转 + 呼吸
-    this.tweens.add({
-      targets: glow,
-      angle: 360,
-      duration: 6400,
-      repeat: -1,
-      ease: 'Linear'
-    });
-    this.tweens.add({
-      targets: glow,
-      alpha: { from: 0.5, to: 0.95 },
-      duration: 780,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut'
-    });
-    // 流光来回扫
-    this.tweens.add({
-      targets: shine,
-      x: {
-        from: view.sprite.x - size * 0.62,
-        to: view.sprite.x + size * 0.62
-      },
-      duration: 980,
-      yoyo: true,
-      repeat: -1,
-      repeatDelay: 260,
-      ease: 'Sine.easeInOut'
-    });
+
+    // 光晕：缓慢自转 + 呼吸（旋转让十字耀斑扫过，明暗不呆板）
+    this.trackTween(
+      view,
+      this.tweens.add({
+        targets: halo,
+        angle: 360,
+        duration: 7200,
+        repeat: -1,
+        ease: 'Linear'
+      })
+    );
+    this.trackTween(
+      view,
+      this.tweens.add({
+        targets: halo,
+        alpha: { from: 0.62, to: 1 },
+        duration: 900,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      })
+    );
+    // 光柱轻微摇曳 + 明暗，像射灯有呼吸
+    this.trackTween(
+      view,
+      this.tweens.add({
+        targets: shaft,
+        alpha: { from: 0.12, to: 0.3 },
+        scaleX: { from: 0.92, to: 1.08 },
+        duration: 1240,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      })
+    );
+    // 流光扫过：窄亮带从左上扫到右下，扫完停一拍再来（节奏感 > 常亮）
+    this.trackTween(
+      view,
+      this.tweens.add({
+        targets: sweep,
+        x: { from: -size * 0.78, to: size * 0.78 },
+        y: { from: -size * 0.78, to: size * 0.78 },
+        duration: 700,
+        repeat: -1,
+        repeatDelay: 520,
+        ease: 'Cubic.easeInOut',
+        onRepeat: () => {
+          // 每次重扫随机换一点角度，像不同角度的反光
+          sweep.setAngle(Phaser.Math.Between(12, 30));
+        }
+      })
+    );
+
+    // 全部装饰放进容器，随方块一起移动 / 缩放
+    const fx = this.add.container(sprite.x, sprite.y, [
+      halo,
+      shaft,
+      sweep,
+      gloss,
+      graphics
+    ]);
+    fx.setDepth(1);
+    view.fx = fx;
+
+    // 容器内的 Graphics 不再需要世界坐标，位置归零
+    graphics.setPosition(0, 0);
+    this.refreshTwinklePlacement(view);
+  }
+
+  /** 星芒发射器跟随卡面尺寸（resize / 重建时调用） */
+  private refreshTwinklePlacement(view: TokenView): void {
+    const tw = view.twinkle;
+    if (!tw) return;
+    const size = view.sprite.displayWidth;
+    const half = size / 2;
+    const zone = tw.emitZones[0] as Phaser.GameObjects.Particles.Zones.EdgeZone | undefined;
+    const src = zone?.source as Phaser.Geom.Rectangle | undefined;
+    if (src) src.setTo(-half * 1.04, -half * 1.04, size * 1.04, size * 1.04);
+    tw.setFrequency(300);
+  }
+
+  /** 登记 Tween 到 view，销毁方块时统一清理（避免 tween 泄漏） */
+  private trackTween(view: TokenView, tween: Phaser.Tweens.Tween): void {
+    if (!view.twinkles) view.twinkles = [];
+    view.twinkles.push(tween);
   }
 
   private destroyView(view: TokenView): void {
     view.pulse?.remove();
     view.pulse = undefined;
+    for (const t of view.twinkles ?? []) t.remove();
+    view.twinkles = undefined;
+    view.twinkle?.destroy();
+    view.twinkle = undefined;
     view.sprite.destroy();
-    if (view.frame) view.frame.destroy();
-    if (view.glow) view.glow.destroy();
-    if (view.shine) view.shine.destroy();
+    if (view.fx) {
+      view.fx.removeAll(true); // 连同容器内的光晕 / 光柱 / 流光 / 高光 / 金环
+      view.fx.destroy();
+    }
+    view.frame?.destroy();
     view.frame = undefined;
-    view.glow = undefined;
-    view.shine = undefined;
+    view.fx = undefined;
+    view.halo = undefined;
+    view.shaft = undefined;
+    view.sweep = undefined;
+    view.gloss = undefined;
   }
 
-  /** 限量版装饰跟随精灵位置（交换 / 下落 / 抖动时需要同步） */
+  /** 限量版装饰跟随精灵（交换 / 下落 / 抖动时需要同步） */
   private syncDecor(view: TokenView): void {
-    if (view.frame) view.frame.setPosition(view.sprite.x, view.sprite.y);
-    if (view.glow) view.glow.setPosition(view.sprite.x, view.sprite.y);
-    if (view.shine) view.shine.setY(view.sprite.y);
+    const x = view.sprite.x;
+    const y = view.sprite.y;
+    if (view.fx) {
+      view.fx.setPosition(x, y);
+      // 跟随便携设备的「倾斜手感」：方块被拖动倾斜时，光效一起倾斜
+      view.fx.setAngle(view.sprite.angle);
+      view.fx.setScale(view.sprite.scaleX / this.baseScale(view.sprite));
+      return;
+    }
+    view.frame?.setPosition(x, y);
   }
 
   /** 全量同步棋盘（初始 / 道具 / 重开）。无动画，直接定位。 */
@@ -765,11 +976,16 @@ export default class Match3Scene extends Phaser.Scene {
         cx += sprite.x;
         cy += sprite.y;
         cn++;
-        const extras = [view.frame, view.glow, view.shine].filter(
+        // 限量版：整个光效容器一起 pop（光晕 / 光柱 / 流光 / 高光 / 金环）
+        // 非限量：仅金环；容器不存在时回退到 frame
+        const extras = [view.fx, view.fx ? undefined : view.frame].filter(
           Boolean
         ) as Phaser.GameObjects.GameObject[];
         view.pulse?.remove();
         view.pulse = undefined;
+        for (const t of view.twinkles ?? []) t.remove();
+        view.twinkles = undefined;
+        view.twinkle?.stop();
         this.tweens.add({
           targets: [sprite, ...extras],
           scale: () => 0.05,
@@ -854,11 +1070,13 @@ export default class Match3Scene extends Phaser.Scene {
         targets.push(view.sprite);
       }
       if (targets.length === 0) return resolve();
-      // 目标格整体放大脉冲：限量版的描边 / 光晕一并跟随
+      // 目标格整体放大脉冲：限量版的光效容器（含金环 / 光晕 / 流光 / 高光）一并跟随
       const decor = indices
         .map((i) => this.viewAt(i))
         .filter(Boolean)
-        .flatMap((v) => [v!.frame, v!.glow, v!.shine].filter(Boolean) as Phaser.GameObjects.GameObject[]);
+        .flatMap((v) =>
+          (v!.fx ? [v!.fx] : [v!.frame].filter(Boolean)) as Phaser.GameObjects.GameObject[]
+        );
       if (decor.length > 0) {
         this.tweens.add({ targets: decor, scale: 1.18, duration: 90, yoyo: true, ease: 'Sine.easeOut' });
       }
@@ -996,9 +1214,13 @@ export default class Match3Scene extends Phaser.Scene {
       // 尺寸变化后基准缩放也随之变化，需同步记录
       this.baseScales.set(view.sprite, view.sprite.scaleX);
       view.sprite.setPosition(this.colCenter(i % this.cols), this.rowCenter(Math.floor(i / this.cols)));
+      view.sprite.setAngle(0);
       this.syncDecor(view);
-      if (view.glow) view.glow.setDisplaySize(size * 2.25, size * 2.25);
-      if (view.shine) view.shine.setDisplaySize(size * 0.6, size * 2.3);
+      if (view.halo) view.halo.setDisplaySize(size * 1.85, size * 1.85);
+      if (view.shaft) view.shaft.setDisplaySize(size * 1.5, size * 1.9).setY(-size * 0.52);
+      if (view.sweep) view.sweep.setDisplaySize(size * 0.42, size * 1.6);
+      if (view.gloss) view.gloss.setDisplaySize(size, size);
+      this.refreshTwinklePlacement(view);
     }
   };
 
@@ -1015,10 +1237,18 @@ export default class Match3Scene extends Phaser.Scene {
     this.tweens.killAll();
     for (const view of this.views.values()) {
       view.pulse = undefined;
+      view.twinkles = undefined;
       view.frame = undefined;
-      view.glow = undefined;
-      view.shine = undefined;
+      view.fx = undefined;
+      view.halo = undefined;
+      view.shaft = undefined;
+      view.sweep = undefined;
+      view.gloss = undefined;
+      view.twinkle?.destroy();
+      view.twinkle = undefined;
     }
+    this.limelight?.destroy();
+    this.limelight = undefined as unknown as Phaser.GameObjects.Graphics;
     // 停掉钱雨粒子：避免卸载瞬间残留粒子继续飞
     this.emitter?.stop(true);
     this.coinEmitter?.stop(true);
