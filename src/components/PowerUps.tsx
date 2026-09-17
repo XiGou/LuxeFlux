@@ -7,14 +7,15 @@
  * 确认后点击气泡内的「立即使用」按钮才会真正消耗道具。
  * 选中状态以金色高亮 + 发光区分；剩余次数以角标展示。
  *
- * 可读性保障（修复「道具介绍的字看不见」）：
- * 早前气泡用 framer-motion 的 initial={{ opacity: 0 }} + spring 入场，
- * 依赖 requestAnimationFrame 驱动。在 WebView / 后台标签页 / Phaser 渲染循环
- * 争用 rAF 的场景下，动画会停在 opacity: 0 且不再恢复 —— 文字其实已在 DOM 里，
- * 只是被整体渲染成全透明，于是「看不见」。
- * 现在改为：气泡本体默认不透明（CSS 层已确保可见），仅用 CSS transform +
- * 极短 transition 做入场增强，不再把「能否看见」交给 JS 动画。
- * 文字改用最深的金墨 #5A4210（gold-ink），字号 13px→13.5px、行高 1.5→1.7。
+ * 可读性保障（两轮修复）：
+ * 1) 可见性：早前气泡用 framer-motion 的 initial={{ opacity: 0 }} + spring 入场，
+ *    依赖 requestAnimationFrame 驱动；在 WebView / 后台标签页 / Phaser 渲染循环
+ *    争用 rAF 时会永久停在 opacity: 0 —— 文字在 DOM 里却整层全透明，于是「看不见」。
+ *    现已改为初始即不透明（仅用 CSS 位移/缩放做入场增强），不再把可见性交给 JS 动画。
+ * 2) 可读性：气泡压在棋盘上方，若气泡背景是半透明/毛玻璃，背后的棋子与网格
+ *    会和正文「叠字」混在一起，字再深也看不清。这里改成真正的不透明实底
+ *    （framer-motion 的 opacity 会作用到整棵子树，任何半透明背景色都会被再乘淡一次，
+ *    因此不能再用透明度做入场，也不能依赖 backdrop-blur）。
  */
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -101,17 +102,18 @@ export default function PowerUps({ uses, active, busy, onUse }: PowerUpsProps) {
               initial={false}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ duration: 0.16, ease: 'easeOut' }}
-              /* 默认 opacity:1，动画仅做位移/缩放增强：
-                 即使 rAF 被暂停也不会把文字渲染成全透明 */
-              className="powerup-detail pointer-events-none absolute inset-x-0 bottom-[calc(100%+0.5rem)] z-50"
+              /* 入场只做位移/缩放，不动 opacity：
+                 opacity 一旦小于 1 会整棵子树一起变淡，背景就「透」了 */
+              className="powerup-detail pointer-events-none absolute inset-x-0 bottom-[100%] z-50"
               role="dialog"
               aria-label={`${detailConf.name} 玩法介绍`}
             >
-              <div className="pointer-events-auto relative rounded-2xl border-2 border-gold-deep/50 bg-cream-panel p-4 shadow-[0_18px_48px_rgba(107,79,18,0.30)] backdrop-blur-[1px]">
+              {/* 不透明实底：背后棋盘不透一点，文字才能稳定看清 */}
+              <div className="powerup-detail-panel pointer-events-auto relative rounded-2xl border-2 border-gold-deep/60 bg-powerup-panel p-3.5 shadow-[0_20px_52px_rgba(107,79,18,0.36)] ring-1 ring-gold-deep/20">
                 {/* 关闭 */}
                 <button
                   onClick={() => setDetail(null)}
-                  className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full border border-gold-deep/50 text-gold-ink transition hover:border-gold-deep hover:bg-gold/20"
+                  className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full border border-gold-deep/50 bg-cream text-gold-ink transition hover:border-gold-deep hover:bg-gold/20"
                   aria-label="关闭介绍"
                 >
                   <X className="h-4 w-4" strokeWidth={2} />
@@ -125,18 +127,18 @@ export default function PowerUps({ uses, active, busy, onUse }: PowerUpsProps) {
                   <div className="min-w-0">
                     <h3 className="font-display text-lg font-extrabold leading-tight text-gold-ink">
                       {detailConf.name}
-                      <span className="ml-2 align-middle font-body text-sm font-semibold text-gold-darker">
+                    </h3>
+                    <p className="mt-0.5 flex flex-wrap items-baseline gap-x-2 font-body text-[11px] font-semibold text-gold-darker">
+                      <span className="rounded-full border border-gold-deep/40 bg-champagne px-2 py-0.5 tabular-nums">
                         剩余 ×{uses[detail]}
                       </span>
-                    </h3>
-                    <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em] text-gold-darker">
-                      {detailConf.tagline}
+                      <span className="uppercase tracking-[0.14em]">{detailConf.tagline}</span>
                     </p>
                   </div>
                 </div>
 
-                {/* 详细玩法介绍 */}
-                <p className="mt-3 border-t border-gold-deep/30 pt-3 font-body text-[13.5px] font-medium leading-[1.7] text-gold-ink">
+                {/* 详细玩法介绍：实底上的深金墨正文 */}
+                <p className="mt-3 border-t border-gold-deep/25 pt-3 font-body text-[13.5px] font-medium leading-[1.7] text-gold-ink">
                   {detailConf.description}
                 </p>
 
@@ -152,14 +154,14 @@ export default function PowerUps({ uses, active, busy, onUse }: PowerUpsProps) {
                   <Zap className="h-4 w-4" strokeWidth={2.4} />
                   {detailDisabled ? '已用完' : `立即使用 · ${detailConf.name}`}
                 </button>
-              </div>
 
-              {/* 气泡小尖角，指向被点击的道具卡片 */}
-              <div
-                className={`absolute -bottom-1.5 h-3 w-3 rotate-45 border-b-2 border-r-2 border-gold-deep/50 bg-cream-panel ${
-                  detail === 'greenChannel' ? 'left-[16.6%]' : detail === 'markup' ? 'left-1/2' : 'left-[83.3%]'
-                } -translate-x-1/2`}
-              />
+                {/* 气泡小尖角，指向被点击的道具卡片（与气泡同色实底） */}
+                <div
+                  className={`absolute -bottom-[7px] h-3 w-3 rotate-45 border-b-2 border-r-2 border-gold-deep/60 bg-powerup-panel ${
+                    detail === 'greenChannel' ? 'left-[16.6%]' : detail === 'markup' ? 'left-1/2' : 'left-[83.3%]'
+                  } -translate-x-1/2`}
+                />
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
