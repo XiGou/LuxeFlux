@@ -68,6 +68,8 @@ export interface MatchEvent {
   points: number;
   /** 本段同时形成的匹配组数（连消感） */
   combo: number;
+  /** 本段的所有匹配段（用于计算奖励步数：四连 / 五连 / 连消） */
+  matches?: number[][];
 }
 
 /** 结算统计：每个品牌的采购数量 */

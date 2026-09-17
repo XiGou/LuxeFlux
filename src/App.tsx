@@ -24,9 +24,21 @@ import {
   useGreenChannel,
   useMarkup,
   useResell,
+  movesReward,
+  BUNDLE_MOVE_COST,
+  BUNDLE_UNITS,
   POWER_UPS
 } from './utils/gameLogic';
-import { tapHaptic, powerUpHaptic, gameOverHaptic, playSound, unlockAudio, setSoundOn, isSoundOn } from './utils/soundAndHaptics';
+import {
+  tapHaptic,
+  powerUpHaptic,
+  gameOverHaptic,
+  rewardHaptic,
+  playSound,
+  unlockAudio,
+  setSoundOn,
+  isSoundOn
+} from './utils/soundAndHaptics';
 import Header from './components/Header';
 import PowerUps from './components/PowerUps';
 import GameOverModal from './components/GameOverModal';
@@ -45,6 +57,8 @@ export default function App() {
   const [modalOpen, setModalOpen] = useState(false);
   const [checkoutMode, setCheckoutMode] = useState(false);
   const [soundOn, setSoundOnState] = useState<boolean>(() => isSoundOn());
+  /** 最近一次获得的奖励步数（HUD 浮出提示，短暂展示后自动消失） */
+  const [bonusMoves, setBonusMoves] = useState(0);
 
   // Phaser 场景 ref
   const boardRef = useRef<GameBoardHandle>(null);
@@ -100,8 +114,8 @@ export default function App() {
    * ================================================================ */
   /** 结算（consumeMove: 交换触发的级联消耗步数；道具触发不消耗） */
   const settle = useCallback(
-    (prev: GameState, consumeMove: boolean) => {
-      const newMoves = consumeMove ? prev.moves - 1 : prev.moves;
+    (prev: GameState, consumeMove: boolean, bonusMoves?: number, moveCost = 1) => {
+      const newMoves = consumeMove ? prev.moves - moveCost : prev.moves;
       if (newMoves <= 0) {
         setCheckoutMode(false);
         setModalOpen(true);
@@ -122,21 +136,28 @@ export default function App() {
         busy: false,
         animation: IDLE_ANIM
       }));
+      if (bonusMoves && bonusMoves > 0) {
+        rewardHaptic();
+        playSound('reward');
+        setBonusMoves(bonusMoves);
+      }
     },
     [safeSetGame]
   );
 
   const runCascade = useCallback(
-    (consumeMove: boolean) => {
+    (consumeMove: boolean, moveCost = 1) => {
       const prev = gameRef.current;
       const [afterClear, evt] = phaseClear(prev.board);
       if (!afterClear || !evt) {
         // 无匹配可消 → 结算
-        settle(prev, consumeMove);
+        settle(prev, consumeMove, undefined, moveCost);
         return;
       }
 
       const newCombo = prev.animation.cascade + 1;
+      // 奖励步数：只有超额匹配（四连 / 五连）与连消才加，且单步封顶
+      const reward = movesReward(evt.matches ?? [], newCombo);
       // 收银机 KA-CHING + 金币叮当：连消越高音越亮（听得见的消费升级）
       playSound('match', { cascade: newCombo });
       powerUpHaptic();
@@ -155,10 +176,15 @@ export default function App() {
         board: afterClear,
         score: newScore,
         items: newItems,
+        moves: g.moves + reward,
         maxCombo: Math.max(g.maxCombo, newCombo),
         brandStats: newStats,
         animation: { phase: 'clearing', swapping: [], clearing: clearedIdx, cascade: newCombo }
       }));
+      if (reward > 0) {
+        rewardHaptic();
+        playSound('reward');
+      }
 
       // 消除动画（引擎粒子爆破）→ 重力下落
       boardRef.current
@@ -179,9 +205,9 @@ export default function App() {
           if (!mountedRef.current) return;
           const cur2 = gameRef.current;
           if (hasMatches(cur2.board)) {
-            runCascade(consumeMove);
+            runCascade(consumeMove, moveCost);
           } else {
-            settle(cur2, consumeMove);
+            settle(cur2, consumeMove, undefined, moveCost);
           }
         });
     },
@@ -296,9 +322,10 @@ export default function App() {
       for (let i = 0; i < result.board.length; i++) {
         if (result.board[i] === null && prev.board[i] !== null) clearedIdx.push(i);
       }
-      // 整柜打包：按件数 × 统一单价入账（限量版买一配一计 2 件）
+      // 整柜打包：整个 3×3 一律只算 BUNDLE_UNITS 件，与实际清空格数无关
       const bundled = clearedIdx.map((i) => prev.board[i]).filter(Boolean) as Cell[];
-      const bundleEvt = toMatchEvent(bundled, bundled.length, 1);
+      const bundleEvt = toMatchEvent(bundled.slice(0, BUNDLE_UNITS), clearedIdx.length, 1);
+      // 打包要付代价：扣 1 步（用步数换一次重排机会，防止空刷）
 
       setActivePowerUp(null);
       setPowerUpUses((u) => ({ ...u, greenChannel: u.greenChannel - 1 }));
@@ -315,7 +342,7 @@ export default function App() {
         animation: { phase: 'clearing', swapping: [], clearing: clearedIdx, cascade: 0 }
       }));
 
-      // 引擎 3×3 高亮 + 消除 → 重力下落 → 连消（道具不消耗步数）
+      // 引擎 3×3 高亮 + 消除 → 重力下落 → 连消（整柜打包消耗 1 步）
       boardRef.current
         ?.pulseCells(clearedIdx)
         .then(() => {
@@ -337,9 +364,10 @@ export default function App() {
           if (!mountedRef.current) return;
           const cur2 = gameRef.current;
           if (hasMatches(cur2.board)) {
-            runCascade(false);
+            // 打包后的连消照常结算奖励步数，不再额外收步
+            runCascade(false, BUNDLE_MOVE_COST);
           } else {
-            settle(cur2, false);
+            settle(cur2, true, 0, BUNDLE_MOVE_COST);
           }
         });
     },
@@ -378,6 +406,13 @@ export default function App() {
   useEffect(() => {
     if (game.status !== 'playing') setActivePowerUp(null);
   }, [game.status]);
+
+  /** 奖励步数提示：短暂展示后自动消失 */
+  useEffect(() => {
+    if (bonusMoves <= 0) return;
+    const timer = setTimeout(() => setBonusMoves(0), 1100);
+    return () => clearTimeout(timer);
+  }, [bonusMoves]);
 
   /** 点按处理：绿色通道模式 → 指定 3×3；普通模式 → 尝试与右/下邻居交换 */
   const handleTap = useCallback(
@@ -427,6 +462,7 @@ export default function App() {
             score={game.score}
             items={game.items}
             soundOn={soundOn}
+            bonusMoves={bonusMoves}
             onToggleSound={handleToggleSound}
           />
         </div>

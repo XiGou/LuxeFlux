@@ -2,7 +2,8 @@
  * Header — 奢华黑金顶栏
  * 左: 声音开关 + 步数 | 中: Logo | 右: 采购件数 + 消费额 (Prespend)
  */
-import { Volume2, VolumeX, Footprints, ShoppingBag } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Volume2, VolumeX, Footprints, ShoppingBag, Plus } from 'lucide-react';
 
 interface HeaderProps {
   moves: number;
@@ -11,10 +12,12 @@ interface HeaderProps {
   items: number;
   /** 声音总开关（BGM + 音效） */
   soundOn: boolean;
+  /** 最近一次获得的奖励步数（>0 时在步数旁浮出提示） */
+  bonusMoves?: number;
   onToggleSound: () => void;
 }
 
-export default function Header({ moves, score, items, soundOn, onToggleSound }: HeaderProps) {
+export default function Header({ moves, score, items, soundOn, bonusMoves = 0, onToggleSound }: HeaderProps) {
   return (
     <header className="flex items-center justify-between gap-2 px-4 pb-2 pt-1">
       {/* 声音开关 + 步数 */}
@@ -40,11 +43,27 @@ export default function Header({ moves, score, items, soundOn, onToggleSound }: 
           <span className="font-body text-[10px] uppercase tracking-[0.2em] text-ivory/40">
             Moves
           </span>
-          <div className="flex items-center gap-1.5">
+          <div className="relative flex items-center gap-1.5">
             <Footprints className="h-4 w-4 text-gold" strokeWidth={1.8} />
             <span className="font-body text-2xl font-bold tabular-nums text-ivory">
               {moves}
             </span>
+            {/* 奖励步数浮出提示：四连 / 五连 / 连消才有，短暂展示 */}
+            <AnimatePresence>
+              {bonusMoves > 0 && (
+                <motion.span
+                  key={bonusMoves}
+                  initial={{ opacity: 0, y: 8, scale: 0.8 }}
+                  animate={{ opacity: 1, y: -6, scale: 1 }}
+                  exit={{ opacity: 0, y: -14 }}
+                  transition={{ type: 'spring', stiffness: 420, damping: 24 }}
+                  className="pointer-events-none absolute -top-4 left-full flex items-center gap-0.5 whitespace-nowrap rounded-full bg-gold px-1.5 py-0.5 font-body text-[11px] font-bold text-ink shadow-gold-glow"
+                >
+                  <Plus className="h-3 w-3" strokeWidth={3} />
+                  {bonusMoves} 步
+                </motion.span>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </div>
