@@ -17,8 +17,8 @@ export default defineConfig({
         short_name: 'Luxe Flux',
         description:
           'A satirical match-3 about luxury consumerism. Match logos, build your Prespend, earn the Birkin.',
-        theme_color: '#0A0A0A',
-        background_color: '#0A0A0A',
+        theme_color: '#FBF8F1',
+        background_color: '#FBF8F1',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',

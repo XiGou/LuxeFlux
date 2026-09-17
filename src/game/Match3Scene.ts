@@ -192,7 +192,8 @@ export default class Match3Scene extends Phaser.Scene {
       lifespan: { min: 280, max: 540 },
       gravityY: 240,
       emitting: false,
-      blendMode: Phaser.BlendModes.ADD
+      // 浅色奶白底：ADD 混合会让金色粒子泛白糊掉，改用 NORMAL 保持「金币爆破」的实体感
+      blendMode: Phaser.BlendModes.NORMAL
     });
 
     // 消费主义素材：金币 / 美金大钞
@@ -242,7 +243,7 @@ export default class Match3Scene extends Phaser.Scene {
       .setDepth(20);
 
     // 限量版金字招牌：金色光点沿高亮方块边框流动（below 卡面，作为环境光）
-    this.limelight = this.add.graphics().setDepth(-2).setBlendMode(Phaser.BlendModes.ADD);
+    this.limelight = this.add.graphics().setDepth(-2).setBlendMode(Phaser.BlendModes.NORMAL);
 
     INTERACTIVE.value = true;
     this.registerInput();
@@ -1163,9 +1164,9 @@ export default class Match3Scene extends Phaser.Scene {
     const r0 = this.cellSize * 0.34;
     const r1 = this.cellSize * (1.1 + Math.min(cascade, 5) * 0.3);
     const g = this.add.graphics({ x, y }).setDepth(24);
-    g.lineStyle(3, 0xf0d68a, 0.9);
+    g.lineStyle(3, 0xd4af37, 0.9);
     g.strokeCircle(0, 0, r0);
-    g.lineStyle(1.5, 0xffffff, 0.5);
+    g.lineStyle(1.5, 0xfffdf8, 0.7);
     g.strokeCircle(0, 0, r0 * 0.72);
     this.tweens.add({
       targets: g,
@@ -1191,10 +1192,11 @@ export default class Match3Scene extends Phaser.Scene {
     const { width, height } = this.scale;
     const pad = 4;
     // 不透明底盘：tile 贴图是透明的，若底盘半透明（旧版靠父容器颜色）会让
-    // 白色卡片（Chanel / Céline）看起来「发灰、洗掉」。这里补回同色实底。
-    this.backing.fillStyle(0x17171a, 1);
+    // 白色卡片（Chanel / Céline）看起来「发灰、洗掉」。这里补回奶白实底，
+    // 与 UI 的 cream-panel 一致，浅色下托盘更干净通透。
+    this.backing.fillStyle(0xfffdf8, 1);
     this.backing.fillRoundedRect(pad, pad, width - pad * 2, height - pad * 2, 18);
-    this.backing.lineStyle(1.5, 0xd4af37, 0.18);
+    this.backing.lineStyle(1.5, 0xc8a44d, 0.35);
     this.backing.strokeRoundedRect(pad, pad, width - pad * 2, height - pad * 2, 18);
   }
 

@@ -65,9 +65,9 @@ function draw(size) {
   // gold stops for gradient
   const goldAt = (t) => {
     const stops = [
-      [0.0, 0xf0, 0xd6, 0x8a],
-      [0.45, 0xd4, 0xaf, 0x37],
-      [1.0, 0x9a, 0x7b, 0x2d]
+      [0.0, 0xc9, 0xa6, 0x3f],
+      [0.5, 0xb9, 0x91, 0x2f],
+      [1.0, 0x8c, 0x6d, 0x22]
     ];
     let a = stops[0];
     let b = stops[stops.length - 1];
@@ -98,7 +98,7 @@ function draw(size) {
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       // background
-      set(x, y, 0x0a, 0x0a, 0x0a);
+      set(x, y, 0xfb, 0xf8, 0xf1);
 
       // gold gradient ring (rounded rect)
       const rr = Math.round(size * 0.12);
