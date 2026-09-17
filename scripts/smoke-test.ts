@@ -15,6 +15,11 @@ import {
   priceOf,
   verdict,
   UNIT_PRICE,
+  BUNDLE_UNITS,
+  BUNDLE_MOVE_COST,
+  movesReward,
+  longestSegment,
+  MOVES_REWARD_CAP,
   ROWS,
   COLS,
   createInitialState,
@@ -146,9 +151,12 @@ for (let i = 0; i < 50; i++) {
   const b = generateBoard();
   const gc = useGreenChannel(b, 27); // center-ish (3,3)
   assert(gc.cleared && gc.cleared.length === 9, 'green channel clears 9 cells');
+  // 整柜打包：无论清空几格，一律只算固定件数（2 件）+ 固定扣步
+  assert(gc.score === priceOf(BUNDLE_UNITS), 'green channel bills fixed bundle units');
+  assert(gc.moves === -BUNDLE_MOVE_COST, 'green channel costs fixed moves');
   const [nb, pts, casc] = processPowerUp(b, gc, getTypes(b));
   assert(complete(nb), 'green channel board complete');
-  assert(pts >= 9 * 1980, 'green channel min points');
+  assert(pts >= gc.score, 'green channel min points');
 
   const mk = useMarkup(b);
   const limitedCount = (mk.board as Cell[]).filter((c) => c.limited).length;
@@ -157,6 +165,28 @@ for (let i = 0; i < 50; i++) {
   const rs = useResell(b);
   assert(!hasMatches(rs.board as Cell[]), 'resell no initial match');
   assert(hasValidMove(rs.board as Cell[]), 'resell has valid move');
+}
+
+// 4b. 奖励步数：只有超额匹配（4 连 / 5 连）与连消才加，且有上限
+{
+  // 三消（3 连）不给奖励
+  assert(movesReward([[0, 1, 2]], 1) === 0, 'plain match-3 gives no bonus move');
+  // 水平 4 连 → +1
+  assert(movesReward([[0, 1, 2, 3]], 1) === 1, 'match-4 gives +1 move');
+  // 垂直 4 连 → +1
+  assert(movesReward([[0, COLS, COLS * 2, COLS * 3]], 1) === 1, 'vertical match-4 gives +1 move');
+  // 5 连 → +2
+  assert(movesReward([[0, 1, 2, 3, 4]], 1) === 2, 'match-5 gives +2 moves');
+  // 连消第 2 段起额外 +1
+  assert(movesReward([[0, 1, 2]], 2) === 1, 'cascade段 gives +1 move');
+  assert(movesReward([[0, 1, 2, 3, 4]], 3) === MOVES_REWARD_CAP, 'bonus capped per move');
+  // 十字交叉（组合段不是直线段）不应被误判成 5 连
+  assert(longestSegment([[0, 1, 2], [2, COLS + 2, COLS * 2 + 2]]) === 3, 'cross counts as 3, not 5');
+  assert(movesReward([[0, 1, 2], [2, COLS + 2, COLS * 2 + 2]], 1) === 0, 'cross gives no bonus');
+  // 奖励上限：再多连消也不能无限续命
+  let rewardSum = 0;
+  for (let i = 1; i <= 10; i++) rewardSum = Math.min(rewardSum + movesReward([[0, 1, 2, 3, 4]], i), MOVES_REWARD_CAP);
+  assert(rewardSum === MOVES_REWARD_CAP, 'cumulative bonus capped at ' + MOVES_REWARD_CAP);
 }
 
 // 5. initial state

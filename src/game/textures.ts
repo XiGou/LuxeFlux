@@ -203,6 +203,67 @@ export function loadTiles(
 }
 
 
+/* ------------------------------------------------------------------ */
+/* 限量版（限量配货）强化高亮素材                                       */
+/* ------------------------------------------------------------------ */
+
+/** 限量版底光纹理 key */
+export const LIMIT_GLOW_KEY = 'limited-glow';
+/** 限量版斜向流光纹理 key */
+export const LIMIT_SHINE_KEY = 'limited-shine';
+
+/** 金色径向光晕（限量版底光，加色混合后自带「打光」感） */
+export function registerLimitedGlowTexture(scene: Phaser.Scene): string {
+  if (scene.textures.exists(LIMIT_GLOW_KEY)) return LIMIT_GLOW_KEY;
+  const S = 128;
+  const c = S / 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = S;
+  canvas.height = S;
+  const ctx = canvas.getContext('2d')!;
+  const grad = ctx.createRadialGradient(c, c, 0, c, c, c);
+  grad.addColorStop(0, 'rgba(255,236,170,0.95)');
+  grad.addColorStop(0.34, 'rgba(255,208,110,0.62)');
+  grad.addColorStop(0.68, 'rgba(212,175,55,0.26)');
+  grad.addColorStop(1, 'rgba(212,175,55,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(c, c, c, 0, Math.PI * 2);
+  ctx.fill();
+  scene.textures.addCanvas(LIMIT_GLOW_KEY, canvas);
+  return LIMIT_GLOW_KEY;
+}
+
+/** 斜向流光条（中间亮、两端透明，划过卡面时像镀金反光） */
+export function registerLimitedShineTexture(scene: Phaser.Scene): string {
+  if (scene.textures.exists(LIMIT_SHINE_KEY)) return LIMIT_SHINE_KEY;
+  const W = 48;
+  const H = 192;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d')!;
+  const grad = ctx.createLinearGradient(0, 0, W, 0);
+  grad.addColorStop(0, 'rgba(255,255,255,0)');
+  grad.addColorStop(0.5, 'rgba(255,248,214,0.85)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = grad;
+  // 上下两端淡出，避免出现生硬的矩形边
+  const vgrad = ctx.createLinearGradient(0, 0, 0, H);
+  vgrad.addColorStop(0, 'rgba(0,0,0,1)');
+  vgrad.addColorStop(0.18, 'rgba(0,0,0,0)');
+  vgrad.addColorStop(0.82, 'rgba(0,0,0,0)');
+  vgrad.addColorStop(1, 'rgba(0,0,0,1)');
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.fillStyle = vgrad;
+  ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = grad;
+  ctx.fillRect(W * 0.28, H * 0.18, W * 0.44, H * 0.64);
+  scene.textures.addCanvas(LIMIT_SHINE_KEY, canvas);
+  return LIMIT_SHINE_KEY;
+}
+
 /** 金色粒子纹理（径向渐变圆点） */
 export function registerSparkTexture(scene: Phaser.Scene): string {
   const key = 'spark';

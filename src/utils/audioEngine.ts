@@ -18,7 +18,7 @@
  * 移动端自动播放策略：AudioContext 必须在首次用户手势后 unlock() 才会出声，
  * 因此 App 在首次 pointerdown / touchstart / keydown 时调用 unlockAudio()。
  */
-export type SfxName = 'match' | 'coin' | 'swap' | 'powerup' | 'cascade' | 'gameover';
+export type SfxName = 'match' | 'coin' | 'swap' | 'powerup' | 'cascade' | 'gameover' | 'reward';
 
 export interface SfxOptions {
   /** 连消段数：越高音越亮（经典 juice 反馈，让玩家「听」到自己在烧钱） */
@@ -528,6 +528,12 @@ class LuxeAudioEngine {
         break;
       case 'powerup':
         this.arp(t, this.sfxBus);
+        break;
+      case 'reward':
+        // 奖励步数：三连上行的清脆铃音（正向反馈，区别于消除的收银机声）
+        this.bell(t, this.sfxBus, f('E5'), 0.5, 0.3);
+        this.bell(t + 0.09, this.sfxBus, f('A5'), 0.55, 0.28);
+        this.bell(t + 0.18, this.sfxBus, f('C6'), 0.7, 0.26);
         break;
       case 'gameover':
         this.finale(t, this.sfxBus);

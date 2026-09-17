@@ -15,6 +15,10 @@ import { ROWS, COLS } from '../utils/gameLogic';
 import {
   ensureTokenTexture,
   registerSparkTexture,
+  registerLimitedGlowTexture,
+  registerLimitedShineTexture,
+  LIMIT_GLOW_KEY,
+  LIMIT_SHINE_KEY,
   registerCoinTexture,
   registerBillTexture,
   loadTiles,
@@ -31,6 +35,9 @@ export interface Match3SceneConfig {
   onTap: (index: number) => void;
 }
 
+/** 限量版标记色（金色，与 UI 强调色一致） */
+const LIMITED_GOLD = 0xffd977;
+
 /** 场景配置持有者：GameBoardBridge 在创建 Phaser.Game 前写入 */
 export const SCENE_CONFIG: { current: Match3SceneConfig | null } = { current: null };
 
@@ -46,6 +53,12 @@ interface TokenView {
   sprite: Phaser.GameObjects.Image;
   /** 限量版 / 爆破 / 炸弹的金色描边容器 */
   frame?: Phaser.GameObjects.Graphics;
+  /** 限量版专属：卡片底部的旋转金色光晕 */
+  glow?: Phaser.GameObjects.Image;
+  /** 限量版专属：斜向流光（缓慢划过卡面，远距离也能瞥见） */
+  shine?: Phaser.GameObjects.Image;
+  /** 限量版专属：呼吸脉冲 Tween */
+  pulse?: Phaser.Tweens.Tween;
 }
 
 /** 场景可交互开关（组件卸载时关闭） */
@@ -117,6 +130,9 @@ export default class Match3Scene extends Phaser.Scene {
     this.trailAt = 0;
 
     const sparkKey = registerSparkTexture(this);
+    // 限量版强化高亮的两个素材
+    registerLimitedGlowTexture(this);
+    registerLimitedShineTexture(this);
 
     // 计算格子尺寸（决定贴图倍率），再按当前盘面用到的品牌加载独立贴图
     if (this.cellSize <= 0) this.computeMetrics();
@@ -401,20 +417,116 @@ export default class Match3Scene extends Phaser.Scene {
     return img;
   }
 
-  /** 限量版 / 爆破 / 炸弹：叠加一层金色光晕描边 */
+  /**
+   * 限量版标记：三重强化，保证任何距离/任何底图上都能一眼看出高亮。
+   *  1. 金环描边 + 向外发光（Graphics 双层 stroke + 内描边）
+   *  2. 卡片下方旋转金色光晕（呼吸脉冲）
+   *  3. 斜向流光持续划过卡面
+   * 非限量（仅爆破 / 炸弹）只保留描边，避免盘面过花。
+   */
   private addLimitedFrame(view: TokenView): void {
+    const cell = view.cell;
+    const isLimited = !!cell.limited;
     const size = view.sprite.displayWidth;
+    const half = size / 2;
+
     const graphics = this.add.graphics();
-    graphics.lineStyle(4, 0xd4af37, 0.85);
-    graphics.strokeRoundedRect(-size / 2, -size / 2, size, size, 12);
+    if (isLimited) {
+      // 外发光：宽描边 + 低透明度，做出光晕扩散感（同时充当「暗色卡片」的对比底）
+      graphics.lineStyle(14, LIMITED_GOLD, 0.22);
+      graphics.strokeRoundedRect(-half - 4, -half - 4, size + 8, size + 8, 20);
+      graphics.lineStyle(9, LIMITED_GOLD, 0.5);
+      graphics.strokeRoundedRect(-half - 2, -half - 2, size + 4, size + 4, 16);
+      // 主金环：足够粗，缩到 40px 也还看得见
+      graphics.lineStyle(5, 0xfff6d8, 1);
+      graphics.strokeRoundedRect(-half - 0.5, -half - 0.5, size + 1, size + 1, 13);
+      graphics.lineStyle(3, 0xffffff, 0.95);
+      graphics.strokeRoundedRect(-half + 2.5, -half + 2.5, size - 5, size - 5, 11);
+    } else {
+      graphics.lineStyle(4, 0xd4af37, 0.85);
+      graphics.strokeRoundedRect(-half, -half, size, size, 12);
+    }
     graphics.setPosition(view.sprite.x, view.sprite.y);
     graphics.setDepth(1);
     view.frame = graphics;
+
+    if (!isLimited) return;
+
+    // 底光：旋转的金色光斑，让限量版方块「自带打光」
+    const glow = this.add
+      .image(view.sprite.x, view.sprite.y, LIMIT_GLOW_KEY)
+      .setDisplaySize(size * 2.25, size * 2.25)
+      .setDepth(-1)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    view.glow = glow;
+
+    // 流光：斜向高光条，缓慢划过卡面
+    const shine = this.add
+      .image(view.sprite.x, view.sprite.y, LIMIT_SHINE_KEY)
+      .setDisplaySize(size * 0.6, size * 2.3)
+      .setDepth(3)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setAlpha(0.85)
+      .setAngle(20);
+    view.shine = shine;
+
+    // 呼吸脉冲：描边 + 流光轻微缩放，形成「活的高亮」
+    view.pulse = this.tweens.add({
+      targets: [graphics, shine],
+      scale: { from: 1, to: 1.045 },
+      duration: 780,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+    // 光晕自己转 + 呼吸
+    this.tweens.add({
+      targets: glow,
+      angle: 360,
+      duration: 6400,
+      repeat: -1,
+      ease: 'Linear'
+    });
+    this.tweens.add({
+      targets: glow,
+      alpha: { from: 0.5, to: 0.95 },
+      duration: 780,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+    // 流光来回扫
+    this.tweens.add({
+      targets: shine,
+      x: {
+        from: view.sprite.x - size * 0.62,
+        to: view.sprite.x + size * 0.62
+      },
+      duration: 980,
+      yoyo: true,
+      repeat: -1,
+      repeatDelay: 260,
+      ease: 'Sine.easeInOut'
+    });
   }
 
   private destroyView(view: TokenView): void {
+    view.pulse?.remove();
+    view.pulse = undefined;
     view.sprite.destroy();
     if (view.frame) view.frame.destroy();
+    if (view.glow) view.glow.destroy();
+    if (view.shine) view.shine.destroy();
+    view.frame = undefined;
+    view.glow = undefined;
+    view.shine = undefined;
+  }
+
+  /** 限量版装饰跟随精灵位置（交换 / 下落 / 抖动时需要同步） */
+  private syncDecor(view: TokenView): void {
+    if (view.frame) view.frame.setPosition(view.sprite.x, view.sprite.y);
+    if (view.glow) view.glow.setPosition(view.sprite.x, view.sprite.y);
+    if (view.shine) view.shine.setY(view.sprite.y);
   }
 
   /** 全量同步棋盘（初始 / 道具 / 重开）。无动画，直接定位。 */
@@ -446,7 +558,7 @@ export default class Match3Scene extends Phaser.Scene {
         view.sprite.setPosition(this.colCenter(i % this.cols), this.rowCenter(Math.floor(i / this.cols)));
         view.sprite.setScale(this.baseScale(view.sprite));
         view.sprite.setDepth(0);
-        if (view.frame) view.frame.setPosition(view.sprite.x, view.sprite.y);
+        this.syncDecor(view);
       }
     }
     // 移除已消失的视图
@@ -461,8 +573,7 @@ export default class Match3Scene extends Phaser.Scene {
 
   /** 类型 / 标记变化时重建一个方块的显示 */
   private refreshView(view: TokenView, cell: Cell, i: number): void {
-    view.sprite.destroy();
-    if (view.frame) view.frame.destroy();
+    this.destroyView(view);
     this.views.delete(cell.id);
     const v = { cell, sprite: this.createSprite(cell, i) };
     if (cell.limited || cell.bomb || cell.blast) this.addLimitedFrame(v);
@@ -498,6 +609,7 @@ export default class Match3Scene extends Phaser.Scene {
         y: aTo.y,
         duration: SWAP_MS,
         ease: 'Cubic.easeInOut',
+        onUpdate: () => this.syncDecor(a),
         onComplete: () => this.setDepthByIndex(a.sprite, to)
       });
       this.tweens.add({
@@ -506,6 +618,7 @@ export default class Match3Scene extends Phaser.Scene {
         y: bTo.y,
         duration: SWAP_MS,
         ease: 'Cubic.easeInOut',
+        onUpdate: () => this.syncDecor(b),
         onComplete: () => {
           this.setDepthByIndex(b.sprite, from);
           resolve();
@@ -541,7 +654,8 @@ export default class Match3Scene extends Phaser.Scene {
         x: bHome.x,
         y: bHome.y,
         duration: SWAP_MS,
-        ease: 'Cubic.easeInOut'
+        ease: 'Cubic.easeInOut',
+        onUpdate: () => this.syncDecor(a)
       });
       this.tweens.add({
         targets: b.sprite,
@@ -549,6 +663,7 @@ export default class Match3Scene extends Phaser.Scene {
         y: aHome.y,
         duration: SWAP_MS,
         ease: 'Cubic.easeInOut',
+        onUpdate: () => this.syncDecor(b),
         onComplete: () => {
           // 阶段 2：在“交换后”的位置抖动，强化“被拒绝”的反馈
           this.tweens.add({
@@ -573,8 +688,10 @@ export default class Match3Scene extends Phaser.Scene {
                 y: aHome.y,
                 duration: SWAP_MS,
                 ease: 'Cubic.easeInOut',
+                onUpdate: () => this.syncDecor(a),
                 onComplete: () => {
                   this.setDepthByIndex(a.sprite, from);
+                  this.syncDecor(a);
                 }
               });
               this.tweens.add({
@@ -583,8 +700,10 @@ export default class Match3Scene extends Phaser.Scene {
                 y: bHome.y,
                 duration: SWAP_MS,
                 ease: 'Cubic.easeInOut',
+                onUpdate: () => this.syncDecor(b),
                 onComplete: () => {
                   this.setDepthByIndex(b.sprite, to);
+                  this.syncDecor(b);
                   resolve();
                 }
               });
@@ -646,9 +765,14 @@ export default class Match3Scene extends Phaser.Scene {
         cx += sprite.x;
         cy += sprite.y;
         cn++;
+        const extras = [view.frame, view.glow, view.shine].filter(
+          Boolean
+        ) as Phaser.GameObjects.GameObject[];
+        view.pulse?.remove();
+        view.pulse = undefined;
         this.tweens.add({
-          targets: sprite,
-          scale: (img: Phaser.GameObjects.Image) => this.baseScale(img) * 0.05,
+          targets: [sprite, ...extras],
+          scale: () => 0.05,
           alpha: 0,
           angle: '+=' + Phaser.Math.Between(-90, 90),
           duration: CLEAR_MS,
@@ -705,7 +829,13 @@ export default class Match3Scene extends Phaser.Scene {
         alpha: 1,
         duration: FALL_MS,
         ease: 'Bounce.easeOut',
-        onComplete: () => resolve()
+        onUpdate: () => {
+          for (const view of this.views.values()) this.syncDecor(view);
+        },
+        onComplete: () => {
+          for (const view of this.views.values()) this.syncDecor(view);
+          resolve();
+        }
       });
     });
   }
@@ -724,13 +854,27 @@ export default class Match3Scene extends Phaser.Scene {
         targets.push(view.sprite);
       }
       if (targets.length === 0) return resolve();
+      // 目标格整体放大脉冲：限量版的描边 / 光晕一并跟随
+      const decor = indices
+        .map((i) => this.viewAt(i))
+        .filter(Boolean)
+        .flatMap((v) => [v!.frame, v!.glow, v!.shine].filter(Boolean) as Phaser.GameObjects.GameObject[]);
+      if (decor.length > 0) {
+        this.tweens.add({ targets: decor, scale: 1.18, duration: 90, yoyo: true, ease: 'Sine.easeOut' });
+      }
       this.tweens.add({
         targets,
         scale: (img: Phaser.GameObjects.Image) => this.baseScale(img) * 1.18,
         duration: 90,
         yoyo: true,
         ease: 'Sine.easeOut',
-        onComplete: () => resolve()
+        onComplete: () => {
+          for (const i of indices) {
+            const v = this.viewAt(i);
+            if (v) this.syncDecor(v);
+          }
+          resolve();
+        }
       });
     });
   }
@@ -852,7 +996,9 @@ export default class Match3Scene extends Phaser.Scene {
       // 尺寸变化后基准缩放也随之变化，需同步记录
       this.baseScales.set(view.sprite, view.sprite.scaleX);
       view.sprite.setPosition(this.colCenter(i % this.cols), this.rowCenter(Math.floor(i / this.cols)));
-      if (view.frame) view.frame.setPosition(view.sprite.x, view.sprite.y);
+      this.syncDecor(view);
+      if (view.glow) view.glow.setDisplaySize(size * 2.25, size * 2.25);
+      if (view.shine) view.shine.setDisplaySize(size * 0.6, size * 2.3);
     }
   };
 
@@ -867,6 +1013,12 @@ export default class Match3Scene extends Phaser.Scene {
   /** 组件卸载时清理 */
   destroyAll(): void {
     this.tweens.killAll();
+    for (const view of this.views.values()) {
+      view.pulse = undefined;
+      view.frame = undefined;
+      view.glow = undefined;
+      view.shine = undefined;
+    }
     // 停掉钱雨粒子：避免卸载瞬间残留粒子继续飞
     this.emitter?.stop(true);
     this.coinEmitter?.stop(true);

@@ -27,6 +27,85 @@ export const UNIT_PRICE = 1980;
 export const LIMITED_UNITS = 2;
 export const START_MOVES = 15;
 
+/**
+ * 道具「整柜打包」固定成交件数。
+ * 无论打包范围内剩几个格子，一律只按 2 件入账（避免 3×3 一次刷 9 件）。
+ */
+export const BUNDLE_UNITS = 2;
+/**
+ * 道具「整柜打包」需扣减的步数（用步数换打包，防止空刷无限清盘）。
+ */
+export const BUNDLE_MOVE_COST = 1;
+
+/* ------------------------------------------------------------------ */
+/* 奖励步数（玩得好才能持续玩下去）                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 奖励步数规则：只有「超额完成」的匹配才加步，且加得上限极低。
+ *  - 一次消除形成 5 连及以上（含十字 / 双段）→ +2 步
+ *  - 一次消除形成 4 连（含交叉双四连）        → +1 步
+ *  - 连消（同一步内第 2 段起）每段          → +1 步
+ *  - 单步封顶 +MOVES_REWARD_CAP，奖励只能减速消耗，永远不亏不赚
+ * 三消不给奖励：普通玩家正常玩下去步数只会不断减少，只有盘面读得好、
+ * 主动造四连/五连/连消的人才可能把局面拖长。
+ */
+export const MOVES_REWARD_CAP = 3;
+/** 5 连及以上奖励步数 */
+export const MOVES_REWARD_MATCH5 = 2;
+/** 4 连奖励步数 */
+export const MOVES_REWARD_MATCH4 = 1;
+/** 连消每段奖励步数 */
+export const MOVES_REWARD_CASCADE = 1;
+
+/**
+ * 一次消除中最长的「直线匹配段」长度（无匹配返回 0）。
+ * 只认真正的直线段：十字交叉形成的组合段不计入长度，避免十字被算成 5 连。
+ */
+export function longestSegment(matches: number[][]): number {
+  let best = 0;
+  for (const seg of matches) {
+    if (seg.length < 3) continue;
+    const first = seg[0];
+    const last = seg[seg.length - 1];
+    const step = Math.abs(last - first) / (seg.length - 1);
+    // 直线段必须是等差步进：同一行步长 = 1，同一列步长 = COLS
+    if (step !== 1 && step !== COLS) continue;
+    const ordered = step === COLS;
+    const onLine = seg.every((i, k) =>
+      ordered ? colOf(i) === colOf(first) && rowOf(i) === rowOf(first) + k : rowOf(i) === rowOf(first)
+    );
+    if (!onLine) continue;
+    if (seg.length > best) best = seg.length;
+  }
+  return best;
+}
+
+/**
+ * 计算一次消除应奖励的步数。
+ *
+ * @param matches 本次消除的所有匹配段
+ * @param cascade 本次消除所处的连消段号（1 = 第一步的首段）
+ */
+export function movesReward(matches: number[][], cascade = 1): number {
+  const longest = longestSegment(matches);
+  let reward = 0;
+  if (longest >= 5) reward += MOVES_REWARD_MATCH5;
+  else if (longest >= 4) reward += MOVES_REWARD_MATCH4;
+  if (cascade > 1) reward += MOVES_REWARD_CASCADE;
+  return Math.min(reward, MOVES_REWARD_CAP);
+}
+
+/**
+ * 多段消除（连消）的总奖励：逐段计算后套用单步上限。
+ * 传入的 cascade 为各段在整步中的序号（首段为 1）。
+ */
+export function movesRewardTotal(segments: { matches: number[][]; cascade: number }[]): number {
+  let reward = 0;
+  for (const s of segments) reward += movesReward(s.matches, s.cascade);
+  return Math.min(reward, MOVES_REWARD_CAP);
+}
+
 /** 占位素材符号集（后续替换为真实品牌 Logo 素材）——默认池全部品牌 */
 export const TOKEN_TYPES: TokenType[] = TOKEN_POOL;
 
@@ -333,6 +412,14 @@ function normalizeBlast(board: Cell[]): Cell[] {
  * 返回 [新棋盘(含空位), MatchEvent]
  */
 export function clearMatches(board: Board): [Board, MatchEvent] {
+  const [next, evt] = clearMatchesDetailed(board);
+  return [next, evt];
+}
+
+/**
+ * 同 clearMatches，但额外返回原始匹配段（用于计算奖励步数）。
+ */
+export function clearMatchesDetailed(board: Board): [Board, MatchEvent, number[][]] {
   const matches = findMatches(board);
 
   const [upgraded, baseClear] = upgradeMatches(board, matches);
@@ -356,7 +443,9 @@ export function clearMatches(board: Board): [Board, MatchEvent] {
   }) as Board;
 
   // 计分：统一单价 × 件数（连消 / 爆破 / 炸弹只增加件数，不改变价格）
-  return [newBoard, toMatchEvent(clearedCells, cleared.size, matches.length)];
+  const evt = toMatchEvent(clearedCells, cleared.size, matches.length);
+  evt.matches = matches;
+  return [newBoard, evt, matches];
 }
 
 /* ------------------------------------------------------------------ */
@@ -455,7 +544,7 @@ export const POWER_UPS = {
     name: '绿色通道',
     tagline: 'Green Channel · 整柜打包 3×3',
     description:
-      '点选棋盘任意格子作为中心，SA 直接把其周围 3×3 的全部单品打包卖给你（最多 9 件，按 $1,980 / 件入账）。适合精准清空碍事品牌、为后续连消铺路；不消耗步数。',
+      '点选棋盘任意格子作为中心，SA 把其周围 3×3 的全部单品打包卖给你：整柜打包一律只算 2 件（按 $1,980 / 件入账，与实际清空格数无关），并消耗 1 步。适合精准清空碍事品牌、为连消铺路。',
     icon: 'layoutGrid' as const,
     uses: 2
   },
@@ -495,9 +584,9 @@ export function useGreenChannel(board: Board, centerIndex: number): PowerUpResul
   const cells = clearedIdx.map((i) => board[i]).filter(Boolean) as Cell[];
   for (const i of clearedIdx) next[i] = null;
 
-  // 打包清仓：按件数 × 统一单价入账（限量版计 2 件）
-  const points = priceOf(unitsOf(cells));
-  return { board: next, score: points, moves: 0, cleared: cells, cascades: 0 };
+  // 打包清仓：整柜打包一律按固定件数（BUNDLE_UNITS）成交，与实际清空格数无关；
+  // 并非免费 —— 调用方需扣减 BUNDLE_MOVE_COST 步（App 侧 settle）。
+  return { board: next, score: priceOf(BUNDLE_UNITS), moves: -BUNDLE_MOVE_COST, cleared: cells, cascades: 0 };
 }
 
 /** 道具 2：限量配货 — 随机将一种普通符号升级为「限量版」（成交计 2 件） */

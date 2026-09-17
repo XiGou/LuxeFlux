@@ -56,6 +56,19 @@ export async function gameOverHaptic(): Promise<void> {
   }
 }
 
+/** 輕震動兩下 — 獎勵步數（玩得好的正向反饋） */
+export async function rewardHaptic(): Promise<void> {
+  try {
+    if (isNative()) {
+      await Haptics.impact({ style: ImpactStyle.Light });
+    } else if ('vibrate' in navigator) {
+      navigator.vibrate?.([10, 30, 10]);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Sound（程序化消費主義音頻引擎）                                       */
 /* ------------------------------------------------------------------ */
