@@ -6,6 +6,15 @@
  * 卡片上方，不参与文档流，因此不会撑高页面 / 产生滚动条）；
  * 确认后点击气泡内的「立即使用」按钮才会真正消耗道具。
  * 选中状态以金色高亮 + 发光区分；剩余次数以角标展示。
+ *
+ * 可读性保障（修复「道具介绍的字看不见」）：
+ * 早前气泡用 framer-motion 的 initial={{ opacity: 0 }} + spring 入场，
+ * 依赖 requestAnimationFrame 驱动。在 WebView / 后台标签页 / Phaser 渲染循环
+ * 争用 rAF 的场景下，动画会停在 opacity: 0 且不再恢复 —— 文字其实已在 DOM 里，
+ * 只是被整体渲染成全透明，于是「看不见」。
+ * 现在改为：气泡本体默认不透明（CSS 层已确保可见），仅用 CSS transform +
+ * 极短 transition 做入场增强，不再把「能否看见」交给 JS 动画。
+ * 文字改用最深的金墨 #5A4210（gold-ink），字号 13px→13.5px、行高 1.5→1.7。
  */
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -89,19 +98,20 @@ export default function PowerUps({ uses, active, busy, onUse }: PowerUpsProps) {
           {detail && detailConf && DetailIcon && (
             <motion.div
               key={detail}
-              initial={{ opacity: 0, y: 8, scale: 0.96 }}
+              initial={false}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 6, scale: 0.97 }}
-              transition={{ type: 'spring', stiffness: 340, damping: 30 }}
-              className="pointer-events-none absolute inset-x-0 bottom-[calc(100%+0.5rem)] z-40"
+              transition={{ duration: 0.16, ease: 'easeOut' }}
+              /* 默认 opacity:1，动画仅做位移/缩放增强：
+                 即使 rAF 被暂停也不会把文字渲染成全透明 */
+              className="powerup-detail pointer-events-none absolute inset-x-0 bottom-[calc(100%+0.5rem)] z-50"
               role="dialog"
               aria-label={`${detailConf.name} 玩法介绍`}
             >
-              <div className="pointer-events-auto relative rounded-2xl border border-gold/70 bg-cream-panel p-4 shadow-[0_16px_44px_rgba(140,109,34,0.26)]">
+              <div className="pointer-events-auto relative rounded-2xl border-2 border-gold-deep/50 bg-cream-panel p-4 shadow-[0_18px_48px_rgba(107,79,18,0.30)] backdrop-blur-[1px]">
                 {/* 关闭 */}
                 <button
                   onClick={() => setDetail(null)}
-                  className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full border border-gold/60 text-gold-darker/80 transition hover:border-gold-deep hover:text-gold-darker"
+                  className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full border border-gold-deep/50 text-gold-ink transition hover:border-gold-deep hover:bg-gold/20"
                   aria-label="关闭介绍"
                 >
                   <X className="h-4 w-4" strokeWidth={2} />
@@ -109,24 +119,24 @@ export default function PowerUps({ uses, active, busy, onUse }: PowerUpsProps) {
 
                 {/* 标题行 */}
                 <div className="flex items-center gap-3 pr-8">
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gold/20 ring-1 ring-gold/50">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gold/20 ring-1 ring-gold-deep/40">
                     <DetailIcon className="h-6 w-6 text-gold-darker" strokeWidth={1.9} />
                   </span>
                   <div className="min-w-0">
-                    <h3 className="font-body text-lg font-extrabold leading-tight text-ink-gold">
+                    <h3 className="font-display text-lg font-extrabold leading-tight text-gold-ink">
                       {detailConf.name}
                       <span className="ml-2 align-middle font-body text-sm font-semibold text-gold-darker">
                         剩余 ×{uses[detail]}
                       </span>
                     </h3>
-                    <p className="font-body text-[11px] uppercase tracking-[0.16em] text-gold-darker">
+                    <p className="font-body text-[11px] font-semibold uppercase tracking-[0.16em] text-gold-darker">
                       {detailConf.tagline}
                     </p>
                   </div>
                 </div>
 
                 {/* 详细玩法介绍 */}
-                <p className="mt-2.5 border-t border-gold/40 pt-2.5 font-body text-[13px] leading-relaxed text-ink-gold">
+                <p className="mt-3 border-t border-gold-deep/30 pt-3 font-body text-[13.5px] font-medium leading-[1.7] text-gold-ink">
                   {detailConf.description}
                 </p>
 
@@ -146,7 +156,7 @@ export default function PowerUps({ uses, active, busy, onUse }: PowerUpsProps) {
 
               {/* 气泡小尖角，指向被点击的道具卡片 */}
               <div
-                className={`absolute -bottom-1.5 h-3 w-3 rotate-45 border-b border-r border-gold/70 bg-ink-panel ${
+                className={`absolute -bottom-1.5 h-3 w-3 rotate-45 border-b-2 border-r-2 border-gold-deep/50 bg-cream-panel ${
                   detail === 'greenChannel' ? 'left-[16.6%]' : detail === 'markup' ? 'left-1/2' : 'left-[83.3%]'
                 } -translate-x-1/2`}
               />
