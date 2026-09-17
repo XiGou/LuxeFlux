@@ -51,7 +51,11 @@ export default {
         'metal-panel':
           'linear-gradient(160deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.35) 40%, rgba(200,164,77,0.12) 100%)',
         'cream-panel':
-          'linear-gradient(160deg, #FFFDF8 0%, #F9F4E9 55%, #F1E9D6 100%)'
+          'linear-gradient(160deg, #FFFDF8 0%, #F9F4E9 55%, #F1E9D6 100%)',
+        // 道具介绍气泡专用：完全不透明的实底（无 alpha）。
+        // 气泡压在棋盘之上，任何半透明/毛玻璃都会让背后棋子与正文「叠字」。
+        'powerup-panel':
+          'linear-gradient(168deg, #FFFDF9 0%, #FDF8ED 46%, #F5EDDC 100%)'
       },
       keyframes: {
         shimmer: {
