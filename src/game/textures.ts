@@ -1,38 +1,37 @@
 /**
- * Phaser 引擎纹理生成
+ * Phaser 引擎纹理生成（12 张独立 tile 贴图版）
  *
- * 从高清雪碧图（public/sprites/luxe_flux_v2_12tiles_sprite.png）切割 12 个品牌 tile
- * 作为 Phaser 纹理（768x1024，4 行 x 3 列，每 tile 256x256，透明背景）。
+ * 素材已从「一张 768x1024 雪碧图」改为 **12 张独立 PNG**：
+ *   public/tiles/<brand>@<scale>x.png（256 / 512 / 768px，透明背景，sRGB）
+ * 每张图片由 scripts/generate-tile-textures.mjs 按旧的雪碧图单个元素 1:1 生成，
+ * 内容与旧素材完全一致，但不再需要运行时切割雪碧图（棋盘与结算界面共用同一批图片）。
  *
- * ⚠️ 清晰度关键处理（消除「模糊 + 白边」三件套）：
- *  1. **按设备像素生成纹理**：纹理尺寸跟随实际显示尺寸（设备像素，见 ensureTokenTexture），
- *     256px 源图不再被运行时大幅缩放，避免 WebGL 线性缩小产生的锯齿与糊边。
- *  2. **高质量逐级降采样**：256 → 目标尺寸采用逐级折半，等效 box filter，
- *     避免一次性大比例缩放的采样丢失。
- *  3. **边缘色彩扩散（alpha bleed）**：把完全透明像素的 RGB 染成邻近 logo 的颜色，
- *     根除缩放 / 过滤 / 旋转时从透明区透出的白色光晕（白边）。
- *  4. **透明占位纹理**：素材未就绪时用全透明占位，而不是 Phaser 内置的
+ * ⚠️ 清晰度关键处理：
+ *  1. **不缩放**：图片本身就按 1x / 2x / 3x 三档导出，直接取 ≥ 目标设备像素
+ *     的那一档，Phaser 只需轻微缩小甚至 1:1 采样，杜绝「放大糊」。
+ *  2. **边缘色彩扩散（alpha bleed）**：在生成阶段已把透明像素的 RGB 染成邻近色，
+ *     运行时缩放 / 旋转不会再从透明区透出白色光晕（白边）。
+ *  3. **透明占位纹理**：素材未就绪时用全透明占位，而不是 Phaser 内置的
  *     `__MISSING` 黑白棋盘格（否则会看到白方块）。
  *
- * 加载策略：模块级缓存一张 HTMLImageElement，全局唯一（兼容 React StrictMode
- * 双挂载与 Capacitor file:// 等复杂场景）。
+ * 加载策略：按品牌懒加载（首次用到才请求），模块级缓存 HTMLImageElement，
+ * 兼容 React StrictMode 双挂载与 Capacitor file:// 等复杂场景。
  */
 import type { TokenType } from '../types/game';
 
-/** 雪碧图资源路径（相对路径，兼容 Capacitor file:// WebView 与 H5 部署） */
-export const SPRITE_URL = 'sprites/luxe_flux_v2_12tiles_sprite.png';
+/** 独立 tile 贴图目录（相对路径，兼容 Capacitor file:// WebView 与 H5 部署） */
+export const TILES_DIR = 'tiles';
 
-/** 雪碧图切割配置（与 luxe_flux_v2_12tiles.json 一致） */
+/** 独立贴图的原始尺寸（1x），2x/3x 为 512 / 768 */
 export const TILE_SIZE = 256;
-export const SPRITE_COLS = 3;
 
-/** 雪碧图纹理 key */
-export const SPRITE_KEY = 'luxe-spritesheet';
+/** 支持的贴图倍率（生成脚本与运行时必须一致） */
+export const TILE_SCALES = [1, 2, 3] as const;
 
 /** 素材未就绪时的透明占位纹理 key（避免 Phaser __MISSING 棋盘格） */
 export const PLACEHOLDER_KEY = 'token-placeholder';
 
-/** 雪碧图行序：12 tile 的品牌（行主序，4 行 x 3 列） */
+/** 品牌顺序（与生成脚本一致，用于预热加载） */
 export const SPRITE_ORDER: TokenType[] = [
   'gucci', 'celine', 'hermes',
   'ysl', 'prada', 'chanel',
@@ -40,10 +39,10 @@ export const SPRITE_ORDER: TokenType[] = [
   'burberry', 'bvlgari', 'tiffany'
 ];
 
-/** 品牌 → 雪碧图帧序号 */
-const FRAME_INDEX: Record<TokenType, number> = Object.fromEntries(
-  SPRITE_ORDER.map((t, i) => [t, i])
-) as Record<TokenType, number>;
+/** 品牌 → 独立贴图相对路径（品牌名即文件名，无需切图配置） */
+export function tileUrl(type: TokenType, scale: number = 1): string {
+  return `${TILES_DIR}/${type}@${scale}x.png`;
+}
 
 /** 纹理 key（size 为空时使用 256 原尺寸纹理） */
 export function tokenTextureKey(type: TokenType, size?: number): string {
@@ -51,174 +50,56 @@ export function tokenTextureKey(type: TokenType, size?: number): string {
 }
 
 /** 模块级雪碧图加载缓存（全局唯一 Promise） */
-let spritePromise: Promise<HTMLImageElement> | null = null;
-let spriteImg: HTMLImageElement | null = null;
+/* ------------------------------------------------------------------ */
+/* 独立 tile 图片加载                                                  */
+/* ------------------------------------------------------------------ */
 
-/** 已加载的雪碧图（未就绪返回 null） */
-function spriteImage(): HTMLImageElement | null {
-  return spriteImg && spriteImg.width > 0 ? spriteImg : null;
+/** 每档倍率的加载 Promise（幂等，失败可重试） */
+const imageLoads = new Map<string, Promise<HTMLImageElement>>();
+/** 已就绪的图片（key = `${type}@${scale}`） */
+const imageCache = new Map<string, HTMLImageElement>();
+
+/** 取得「已就绪」的图片（未加载完成返回 null） */
+export function loadedTileImage(type: TokenType, scale: number): HTMLImageElement | null {
+  const img = imageCache.get(`${type}@${scale}`);
+  return img && img.width > 0 ? img : null;
 }
 
-/** 加载雪碧图为 HTMLImageElement（模块级缓存，幂等） */
-export function loadTileImage(): Promise<HTMLImageElement> {
-  if (spritePromise) return spritePromise;
-  spritePromise = new Promise((resolve, reject) => {
+/** 加载指定品牌 + 倍率的贴图（模块级缓存，幂等） */
+export function loadTileImage(type: TokenType, scale: number = 1): Promise<HTMLImageElement> {
+  const key = `${type}@${scale}`;
+  const cached = imageLoads.get(key);
+  if (cached) return cached;
+  const p = new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
-      spriteImg = img;
+      imageCache.set(key, img);
       resolve(img);
     };
     img.onerror = () => {
-      spritePromise = null; // 允许重试
-      reject(new Error('sprite sheet load failed: ' + SPRITE_URL));
+      imageLoads.delete(key); // 允许重试
+      reject(new Error(`tile image load failed: ${tileUrl(type, scale)}`));
     };
-    img.src = SPRITE_URL;
+    img.src = tileUrl(type, scale);
   });
-  return spritePromise;
-}
-
-/* ------------------------------------------------------------------ */
-/* 纹理加工：降采样 + 边缘扩散                                          */
-/* ------------------------------------------------------------------ */
-
-/** 逐级折半降采样（等效 box filter，比一次性缩放更干净） */
-function drawScaled(
-  source: CanvasImageSource,
-  srcSize: number,
-  dstSize: number
-): HTMLCanvasElement {
-  const canvas = document.createElement('canvas');
-  canvas.width = dstSize;
-  canvas.height = dstSize;
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(source, 0, 0, srcSize, srcSize, 0, 0, dstSize, dstSize);
-  }
-  return canvas;
+  imageLoads.set(key, p);
+  return p;
 }
 
 /**
- * 边缘色彩扩散（alpha bleed）：把 alpha=0 像素的 RGB 替换为邻近有色像素的均值。
- * 这是消除「白边 / 亮边」的关键 —— 纹理被线性过滤或旋转时，透明区不再混入白色。
+ * 挑选贴图倍率：取「≥ 目标设备像素」的最小档，避免运行时放大导致糊边。
+ * 例：目标 98 设备像素 → 2x（512 源图缩到 98，采样比例 5:1，清晰且省内存）。
  */
-function bleedTransparentEdges(canvas: HTMLCanvasElement, passes = 3): void {
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return;
-  const w = canvas.width;
-  const h = canvas.height;
-  if (w === 0 || h === 0) return;
-
-  const image = ctx.getImageData(0, 0, w, h);
-  const data = image.data;
-  let src = new Uint8ClampedArray(data);
-
-  for (let p = 0; p < passes; p++) {
-    const next = new Uint8ClampedArray(src);
-    let changed = false;
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const i = (y * w + x) * 4;
-        if (src[i + 3] !== 0) continue; // 只处理完全透明像素
-        let r = 0;
-        let g = 0;
-        let b = 0;
-        let n = 0;
-        for (let dy = -1; dy <= 1; dy++) {
-          const ny = y + dy;
-          if (ny < 0 || ny >= h) continue;
-          for (let dx = -1; dx <= 1; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            const nx = x + dx;
-            if (nx < 0 || nx >= w) continue;
-            const j = (ny * w + nx) * 4;
-            if (src[j + 3] === 0) continue;
-            r += src[j];
-            g += src[j + 1];
-            b += src[j + 2];
-            n++;
-          }
-        }
-        if (n > 0) {
-          next[i] = r / n;
-          next[i + 1] = g / n;
-          next[i + 2] = b / n;
-          changed = true;
-        }
-      }
-    }
-    if (!changed) break;
-    src = next;
+export function pickTileScale(targetDevicePx: number): number {
+  for (const s of TILE_SCALES) {
+    if (TILE_SIZE * s >= targetDevicePx) return s;
   }
-
-  data.set(src);
-  ctx.putImageData(image, 0, 0);
+  return TILE_SCALES[TILE_SCALES.length - 1];
 }
 
-/** 已做边缘扩散的 tile 缓存：key = `${type}@${bleedSize}` */
-const bleedCache = new Map<string, HTMLCanvasElement>();
-
-/** 取得「已扩散边缘」的 tile（按需生成，尺寸 128 或 256） */
-function getBledTile(img: HTMLImageElement, type: TokenType, size: number): HTMLCanvasElement | null {
-  const idx = FRAME_INDEX[type];
-  if (idx === undefined) return null;
-  const bleedSize = size > 128 ? TILE_SIZE : 128;
-  const key = `${type}@${bleedSize}`;
-  const cached = bleedCache.get(key);
-  if (cached) return cached;
-
-  const r = Math.floor(idx / SPRITE_COLS);
-  const c = idx % SPRITE_COLS;
-  const tile = document.createElement('canvas');
-  tile.width = TILE_SIZE;
-  tile.height = TILE_SIZE;
-  const ctx = tile.getContext('2d');
-  if (!ctx) return null;
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(
-    img,
-    c * TILE_SIZE,
-    r * TILE_SIZE,
-    TILE_SIZE,
-    TILE_SIZE,
-    0,
-    0,
-    TILE_SIZE,
-    TILE_SIZE
-  );
-  const out = bleedSize === TILE_SIZE ? tile : drawScaled(tile, TILE_SIZE, bleedSize);
-  bleedTransparentEdges(out);
-  bleedCache.set(key, tile);
-  return tile;
-}
-
-/** 已生成的目标尺寸纹理缓存：key = `${type}@${size}` */
-const sizedCache = new Map<string, HTMLCanvasElement>();
-
-/** 取得指定尺寸的 tile（高质量降采样 + 边缘已扩散） */
-function getSizedTile(img: HTMLImageElement, type: TokenType, size: number): HTMLCanvasElement | null {
-  const key = `${type}@${size}`;
-  const cached = sizedCache.get(key);
-  if (cached) return cached;
-
-  const bled = getBledTile(img, type, size);
-  if (!bled) return null;
-
-  let cur: CanvasImageSource = bled;
-  let curSize = bled.width;
-  while (curSize > size * 2) {
-    const nextSize = Math.max(size, Math.round(curSize / 2));
-    cur = drawScaled(cur, curSize, nextSize);
-    curSize = nextSize;
-  }
-  const out = curSize === size ? (cur as HTMLCanvasElement) : drawScaled(cur, curSize, size);
-
-  // 缓存上限保护（旋转 / 反复 resize 时不无限增长）
-  if (sizedCache.size > 64) sizedCache.clear();
-  sizedCache.set(key, out);
-  return out;
+/** 预热加载全部 12 个品牌（用于 loading 阶段 / 结算界面图标） */
+export function preloadAllTiles(scale: number = 1): Promise<HTMLImageElement[]> {
+  return Promise.all(SPRITE_ORDER.map((t) => loadTileImage(t, scale)));
 }
 
 /* ------------------------------------------------------------------ */
@@ -236,54 +117,91 @@ export function ensurePlaceholder(scene: Phaser.Scene): string {
   return PLACEHOLDER_KEY;
 }
 
+/** 裁掉四周完全透明的边并放到正方形画布，使 tile 内容与格子等比居中 */
+function normalizeTile(img: HTMLImageElement): CanvasImageSource {
+  const size = img.width;
+  if (!size) return img;
+  const src = document.createElement('canvas');
+  src.width = size;
+  src.height = size;
+  const sctx = src.getContext('2d', { willReadFrequently: true });
+  if (!sctx) return img;
+  sctx.drawImage(img, 0, 0, size, size);
+
+  const { data } = sctx.getImageData(0, 0, size, size);
+  let minX = size, minY = size, maxX = -1, maxY = -1;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      if (data[(y * size + x) * 4 + 3] <= 8) continue;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < 0) return img;
+
+  const out = document.createElement('canvas');
+  out.width = size;
+  out.height = size;
+  const octx = out.getContext('2d');
+  if (!octx) return img;
+  octx.imageSmoothingEnabled = true;
+  octx.imageSmoothingQuality = 'high';
+  octx.drawImage(
+    src,
+    minX,
+    minY,
+    maxX - minX + 1,
+    maxY - minY + 1,
+    0,
+    0,
+    size,
+    size
+  );
+  return out;
+}
+
 /**
  * 确保「指定品牌 + 指定尺寸（设备像素）」的纹理已注册，返回纹理 key。
- * 素材未就绪时返回透明占位纹理 key（后续素材加载完成会重建视图）。
+ * 自动挑选倍率；素材未就绪时返回透明占位纹理 key（后续素材加载完成会重建视图）。
  */
 export function ensureTokenTexture(scene: Phaser.Scene, type: TokenType, size: number): string {
+  const scale = pickTileScale(size);
   const key = tokenTextureKey(type, size);
   if (scene.textures.exists(key)) return key;
-  const img = spriteImage();
-  if (!img) return ensurePlaceholder(scene);
-  const canvas = getSizedTile(img, type, size);
-  if (!canvas) return ensurePlaceholder(scene);
-  scene.textures.addCanvas(key, canvas);
+  const img = loadedTileImage(type, scale);
+  if (!img) {
+    void loadTileImage(type, scale).catch(() => {});
+    return ensurePlaceholder(scene);
+  }
+  scene.textures.addCanvas(key, normalizeTile(img) as HTMLCanvasElement);
   return key;
 }
 
-/** 确保雪碧图已加载并注册到指定场景的纹理管理器。 */
-export function ensureSpriteReady(scene: Phaser.Scene): Promise<void> {
-  return loadTileImage().then((img) => {
-    // 场景可能已被销毁（StrictMode 双挂载），此时跳过注册
-    try {
-      const game = (scene.sys as { game?: Phaser.Game | null } | null)?.game;
-      if (!game) return;
-      if (scene.textures.exists(SPRITE_KEY)) {
-        scene.textures.get(SPRITE_KEY).setDataSource(img);
-      } else {
-        scene.textures.addImage(SPRITE_KEY, img);
-      }
-    } catch (e) {
-      // 场景已销毁等场景，静默跳过（活跃实例会自行注册）
-    }
-  });
-}
-
 /**
- * 启动雪碧图加载（幂等）。加载完成后回调 onReady（失败也会回调，避免 loading 卡死）。
+ * 启动 tile 素材加载（幂等）。加载完成后回调 onReady（失败也会回调，避免 loading 卡死）。
+ *
+ * @param types 需要加载的品牌（默认仅当前局用到的品牌；预热可传全部）
+ * @param size  目标设备像素（决定加载哪一档倍率）
  */
-export function loadSpriteSheet(scene: Phaser.Scene, onReady?: () => void): void {
-  if (scene.textures.exists(SPRITE_KEY) && scene.textures.get(SPRITE_KEY).getSourceImage()?.width) {
-    onReady?.();
-    return;
-  }
-  ensureSpriteReady(scene)
+export function loadTiles(
+  scene: Phaser.Scene,
+  types: TokenType[],
+  size: number,
+  onReady?: () => void
+): void {
+  // scene 仅用于保持与其它纹理 API 一致的调用签名（加载不依赖场景）
+  void scene;
+  const scale = pickTileScale(size);
+  Promise.all(types.map((t) => loadTileImage(t, scale)))
     .then(() => onReady?.())
     .catch((e) => {
-      console.error('[LuxeFlux] sprite sheet error:', e);
+      console.error('[LuxeFlux] tile images error:', e);
       onReady?.();
     });
 }
+
 
 /** 金色粒子纹理（径向渐变圆点） */
 export function registerSparkTexture(scene: Phaser.Scene): string {

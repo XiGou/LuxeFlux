@@ -17,10 +17,11 @@ import {
   registerSparkTexture,
   registerCoinTexture,
   registerBillTexture,
-  loadSpriteSheet,
+  loadTiles,
   COIN_KEY,
   BILL_KEY,
-  TILE_SIZE
+  TILE_SIZE,
+  SPRITE_ORDER
 } from './textures';
 
 export interface Match3SceneConfig {
@@ -117,10 +118,16 @@ export default class Match3Scene extends Phaser.Scene {
 
     const sparkKey = registerSparkTexture(this);
 
-    // 启动雪碧图加载：就绪后若棋盘已同步，则重绘一次保证 tile 显示
-    loadSpriteSheet(this, () => {
+    // 计算格子尺寸（决定贴图倍率），再按当前盘面用到的品牌加载独立贴图
+    if (this.cellSize <= 0) this.computeMetrics();
+    const usedTypes = Array.from(
+      new Set((this.board.length ? this.board : []).filter(Boolean).map((c) => c!.type))
+    );
+    // 棋盘尚未同步时先预载全部品牌（保证 SCENE_READY 时素材已就绪）
+    const types = usedTypes.length ? usedTypes : SPRITE_ORDER;
+    loadTiles(this, types, this.textureSize, () => {
       if (this.board.length > 0) {
-        // 雪碧图刚就绪：旧 sprite 可能用了占位纹理，强制重建所有视图
+        // 贴图刚就绪：旧 sprite 可能用了占位纹理，强制重建所有视图
         for (const view of Array.from(this.views.values())) this.destroyView(view);
         this.views.clear();
         this.images = [];
@@ -381,7 +388,7 @@ export default class Match3Scene extends Phaser.Scene {
   }
 
   private createSprite(cell: Cell, i: number): Phaser.GameObjects.Image {
-    // 按设备像素取纹理：与显示尺寸 1:1，缩放过滤不再产生模糊 / 白边
+    // 按设备像素取纹理（自动选 1x/2x/3x 贴图）：采样接近 1:1，不再模糊 / 白边
     const key = ensureTokenTexture(this, cell.type, this.textureSize);
     const size = Math.floor(this.cellSize * CELL_RATIO);
     const img = this.add
@@ -821,6 +828,8 @@ export default class Match3Scene extends Phaser.Scene {
     this.backing.clear();
     const { width, height } = this.scale;
     const pad = 4;
+    // 不透明底盘：tile 贴图是透明的，若底盘半透明（旧版靠父容器颜色）会让
+    // 白色卡片（Chanel / Céline）看起来「发灰、洗掉」。这里补回同色实底。
     this.backing.fillStyle(0x17171a, 1);
     this.backing.fillRoundedRect(pad, pad, width - pad * 2, height - pad * 2, 18);
     this.backing.lineStyle(1.5, 0xd4af37, 0.18);

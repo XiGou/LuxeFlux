@@ -95,22 +95,27 @@ npx cap open android
 ├── public/
 │   ├── favicon.svg            # Logo（佔位）
 │   ├── manifest.webmanifest   # PWA 清單
-│   └── icons/                 # PWA 圖示（可替換真實素材）
+│   ├── icons/                 # PWA 圖示（可替換真實素材）
+│   └── tiles/                 # 12 品牌獨立 tile 貼圖（1x/2x/3x，透明背景）
+├── assets/
+│   └── source/                # 素材來源（8K 原圖 / 歷史雪碧圖，不參與運行時加載）
 ├── scripts/
 │   ├── generate-icons.cjs     # 生成佔位圖示的腳本
+│   ├── generate-tile-textures.mjs # 雪碧圖 → 12 張獨立 tile 貼圖（含白邊清除）
 │   └── smoke-test.ts          # 邏輯冒煙測試
 └── src/
     ├── types/game.ts          # 型別定義（格子/道具/狀態/品牌統計）
     ├── utils/
-    │   ├── brands.ts          # 品牌素材池（10 個經典包袋品牌，每局抽 6 種）
+    │   ├── brands.ts          # 品牌素材池（12 個經典包袋品牌，每局抽 6 種）
     │   ├── gameLogic.ts       # 完整消消樂演算法（生成/匹配/交換/消除/重力/道具/動畫階段）
     │   └── soundAndHaptics.ts # Capacitor Haptics + Howler 音效封裝
     ├── game/
     │   ├── Match3Scene.ts     # Phaser 3 場景：棋盤渲染 / Tween 動畫 / 粒子 / 手勢（Canvas/WebGL）
-    │   └── textures.ts        # 品牌徽章 Canvas 紋理 + 金色粒子紋理生成
+    │   └── textures.ts        # 12 張獨立 tile 貼圖加載 + 金色粒子 / 金幣 / 鈔票紋理生成
     ├── components/
     │   ├── GameBoardBridge.tsx# Phaser.Game 掛載橋：把引擎場景接入 React（ref 命令式 API）
-    │   ├── BrandMark.tsx      # 品牌徽章 SVG（結算彈窗 / 統計用，棋盤改用引擎紋理）
+    │   ├── BrandMark.tsx      # 品牌徽章 SVG（純文字場景用，棋盤 / 結算改用 tile 貼圖）
+    │   ├── BrandTile.tsx      # 結算界面品牌圖標（直讀 public/tiles 貼圖）
     │   ├── Header.tsx         # 步數 / Logo / Prespend
     │   ├── PowerUps.tsx       # 道具欄
     │   └── GameOverModal.tsx  # 結算彈窗 + 品牌採購統計 + 禮花
@@ -187,12 +192,15 @@ npx cap open android
 
 ## 🧩 品牌素材
 
-棋盤符號為 **10 個經典包袋品牌** 的風格化 SVG 徽章（`src/components/BrandMark.tsx`）：
+棋盤與結算界面的符號為 **12 個經典包袋品牌的獨立 tile 貼圖**：
 
-> 香奈儿 · 爱马仕 · 路易威登 · 古驰 · 迪奥 · 普拉达 · 赛琳 · 圣罗兰 · 葆蝶家 · 博柏利
+> Gucci · Céline · Hermès · Saint Laurent · Prada · Chanel · Louis Vuitton · Dior · Fendi · Burberry · Bvlgari · Tiffany & Co.
 
+- **獨立貼圖**：`public/tiles/<brand>@<scale>x.png`，每個品牌一張，不再使用雪碧圖。
+- **三檔倍率**：`1x`（256px）/ `2x`（512px）/ `3x`（768px），運行時自動選「≥ 目標設備像素」的最小檔，**不做放大縮放**，從根上避免糊邊。
+- **透明背景 + 邊緣色彩擴散**：透明像素的 RGB 被染成鄰近色，縮放 / 旋轉不會透出白色光暈（白邊）。
+- **生成方式**：`node scripts/generate-tile-textures.mjs` —— 從 `assets/source/` 的歷史雪碧圖逐 tile 生成，並清除原素材殘留的白色接縫。
 - 每局**隨機抽取 6 種**（主流消消樂 5~7 種）生成對局，素材池大於局內種類，多局體驗各不相同。
-- 素材為內聯矢量 SVG，離線可用、縮放不失真，後續可替換為 World Vector Logo / Iconfont / Freebie Supply 的真實品牌 SVG。
 - 結算畫面展示**每個品牌本局採購（消除）數量**，增加收集趣味。
 
 ---

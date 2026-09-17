@@ -1,9 +1,10 @@
 /**
- * BrandTile — 结算界面品牌图标（复用与棋盘一致的高清 tile 雪碧图）
+ * BrandTile — 结算界面品牌图标（复用棋盘同一批独立 tile 贴图）
  *
- * 直接从 public/sprites/luxe_flux_v2_12tiles_sprite.png 按 TILE_SIZE 切割出
- * 该品牌对应的 tile，保证结算「本局购入」统计里的图标与棋盘方块 100% 一致，
- * 不再使用旧的矢量 SVG 徽章（棋盘已升级为 8K 高清 tile，结算图标需同步）。
+ * 素材已从「一张雪碧图 + 运行时切割」改为 **12 张独立 PNG**：
+ *   public/tiles/<brand>@<scale>x.png
+ * 这里直接按品牌拼 URL 当普通图片加载，不再需要 canvas 切图，
+ * 保证结算「本局购入」统计里的图标与棋盘方块 100% 是一致的素材。
  *
  * 加载复用 Phaser 侧同一份模块级缓存（loadTileImage），幂等、不重复请求，
  * 兼容 React StrictMode 双挂载与 Capacitor file:// 场景。
@@ -11,50 +12,30 @@
 import { memo, useEffect, useState } from 'react';
 import type { TokenType } from '../types/game';
 import { BRAND_NAMES } from '../utils/brands';
-import {
-  SPRITE_COLS,
-  SPRITE_ORDER,
-  TILE_SIZE,
-  loadTileImage
-} from '../game/textures';
+import { loadTileImage, tileUrl, pickTileScale } from '../game/textures';
 
 interface BrandTileProps {
   type: TokenType;
   className?: string;
 }
 
+/** 结算图标固定用 2x（约 56 CSS px 的 2~3 倍屏足够清晰，且体积可控） */
+const ICON_SCALE = 2;
+
 function BrandTile({ type, className = '' }: BrandTileProps) {
-  const [src, setSrc] = useState<string | null>(null);
+  const [src, setSrc] = useState<string | null>(tileUrl(type, ICON_SCALE));
 
   useEffect(() => {
     let alive = true;
-    loadTileImage()
-      .then((img) => {
+    // 预热（走 Phaser 侧同一份缓存），失败则回退到 1x 直链
+    loadTileImage(type, ICON_SCALE)
+      .then(() => {
         if (!alive) return;
-        const idx = SPRITE_ORDER.indexOf(type);
-        if (idx < 0) return;
-        const r = Math.floor(idx / SPRITE_COLS);
-        const c = idx % SPRITE_COLS;
-        const canvas = document.createElement('canvas');
-        canvas.width = TILE_SIZE;
-        canvas.height = TILE_SIZE;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        ctx.drawImage(
-          img,
-          c * TILE_SIZE,
-          r * TILE_SIZE,
-          TILE_SIZE,
-          TILE_SIZE,
-          0,
-          0,
-          TILE_SIZE,
-          TILE_SIZE
-        );
-        setSrc(canvas.toDataURL('image/png'));
+        setSrc(tileUrl(type, ICON_SCALE));
       })
-      .catch((e) => {
-        console.error('[LuxeFlux] BrandTile sprite load error:', e);
+      .catch(() => {
+        if (!alive) return;
+        setSrc(tileUrl(type, pickTileScale(1)));
       });
     return () => {
       alive = false;
