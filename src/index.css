@@ -60,3 +60,28 @@ svg {
 canvas {
   image-rendering: auto;
 }
+
+/* ============================================================
+   道具介绍气泡（PowerUps 悬浮详情）
+   背景：气泡曾用 framer-motion 的 initial={{ opacity: 0 }} + spring 入场，
+   完全依赖 requestAnimationFrame。在 WebView / 后台标签页 / Phaser 渲染循环
+   争用 rAF 时，动画会永久停在 opacity: 0 —— 文字已在 DOM 却整层渲染为全透明，
+   表现为「道具介绍的字看不见」。
+
+   这里用 CSS 兜底：无论 JS 动画是否跑完，气泡与正文都保证可见；
+   入场动效只保留位移/缩放增强，不再参与「可见性」。
+   ============================================================ */
+.powerup-detail {
+  /* 双保险：动画若卡住，也不允许整体透明 */
+  opacity: 1;
+  will-change: transform;
+  transform: translateZ(0); /* 独立合成层，避免被棋盘 canvas 的渲染层吞掉文字 */
+}
+
+/* JS 动画被暂停（rAF 冻结）时，@media 不生效也无妨：上一行已保证 opacity:1 */
+@media (prefers-reduced-motion: reduce) {
+  .powerup-detail {
+    animation: none !important;
+    transition: none !important;
+  }
+}
