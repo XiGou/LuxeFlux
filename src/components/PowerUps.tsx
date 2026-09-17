@@ -54,29 +54,29 @@ export default function PowerUps({ uses, active, busy, onUse }: PowerUpsProps) {
                 aria-expanded={detail === type}
                 className={`group relative flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3 transition-all duration-200 ${
                   isActive
-                    ? 'border-gold bg-gold/20 shadow-gold-glow'
+                    ? 'border-gold-deep bg-gold/25 shadow-gold-glow ring-1 ring-gold-deep/40'
                     : disabled
-                      ? 'border-ink-line bg-cream opacity-45'
+                      ? 'border-ink-line bg-ink-soft opacity-60'
                       : detail === type
-                        ? 'border-gold bg-ink-panel shadow-gold-glow'
-                        : 'border-gold/30 bg-cream shadow-card-soft hover:border-gold hover:bg-champagne/60 active:scale-95'
+                        ? 'border-gold-deep bg-ink-panel shadow-gold-glow'
+                        : 'border-gold/60 bg-cream shadow-card-soft hover:border-gold-deep hover:bg-champagne/60 active:scale-95'
                 }`}
               >
                 <div className="relative">
                   <Icon
-                    className={`h-6 w-6 ${isActive ? 'text-gold-deep' : 'text-gold-deep/80'}`}
+                    className={`h-6 w-6 ${isActive ? 'text-gold-darker' : 'text-gold-darker/90'}`}
                     strokeWidth={1.9}
                   />
                   {remaining > 0 && (
-                    <span className="absolute -right-2.5 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-gold-gradient text-[11px] font-bold text-ink-deep ring-1 ring-gold-deep/30">
+                    <span className="absolute -right-2.5 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-gold-gradient text-[11px] font-bold text-gold-ink ring-1 ring-gold-ink/30">
                       {remaining}
                     </span>
                   )}
                 </div>
-                <span className="font-body text-sm font-bold leading-tight text-ink-deep">
+                <span className="font-body text-sm font-bold leading-tight text-ink-gold">
                   {conf.name}
                 </span>
-                <span className="font-body text-[11px] uppercase tracking-wide text-ivory-soft">
+                <span className="font-body text-[11px] uppercase tracking-wide text-gold-darker/80">
                   {conf.tagline.split('·')[1]?.trim()}
                 </span>
               </button>
@@ -97,11 +97,11 @@ export default function PowerUps({ uses, active, busy, onUse }: PowerUpsProps) {
               role="dialog"
               aria-label={`${detailConf.name} 玩法介绍`}
             >
-              <div className="pointer-events-auto relative rounded-2xl border border-gold/40 bg-cream-panel p-4 shadow-[0_16px_44px_rgba(140,109,34,0.22)]">
+              <div className="pointer-events-auto relative rounded-2xl border border-gold/70 bg-cream-panel p-4 shadow-[0_16px_44px_rgba(140,109,34,0.26)]">
                 {/* 关闭 */}
                 <button
                   onClick={() => setDetail(null)}
-                  className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full border border-gold/30 text-gold-deep/70 transition hover:border-gold hover:text-gold-deep"
+                  className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full border border-gold/60 text-gold-darker/80 transition hover:border-gold-deep hover:text-gold-darker"
                   aria-label="关闭介绍"
                 >
                   <X className="h-4 w-4" strokeWidth={2} />
@@ -109,24 +109,24 @@ export default function PowerUps({ uses, active, busy, onUse }: PowerUpsProps) {
 
                 {/* 标题行 */}
                 <div className="flex items-center gap-3 pr-8">
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gold/15 ring-1 ring-gold/25">
-                    <DetailIcon className="h-6 w-6 text-gold-deep" strokeWidth={1.9} />
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gold/20 ring-1 ring-gold/50">
+                    <DetailIcon className="h-6 w-6 text-gold-darker" strokeWidth={1.9} />
                   </span>
                   <div className="min-w-0">
-                    <h3 className="font-body text-lg font-extrabold leading-tight text-ink-deep">
+                    <h3 className="font-body text-lg font-extrabold leading-tight text-ink-gold">
                       {detailConf.name}
-                      <span className="ml-2 align-middle font-body text-sm font-semibold text-gold-deep/80">
+                      <span className="ml-2 align-middle font-body text-sm font-semibold text-gold-darker">
                         剩余 ×{uses[detail]}
                       </span>
                     </h3>
-                    <p className="font-body text-[11px] uppercase tracking-[0.16em] text-ivory-soft">
+                    <p className="font-body text-[11px] uppercase tracking-[0.16em] text-gold-darker">
                       {detailConf.tagline}
                     </p>
                   </div>
                 </div>
 
                 {/* 详细玩法介绍 */}
-                <p className="mt-2.5 border-t border-ink-line pt-2.5 font-body text-[13px] leading-relaxed text-ivory">
+                <p className="mt-2.5 border-t border-gold/40 pt-2.5 font-body text-[13px] leading-relaxed text-ink-gold">
                   {detailConf.description}
                 </p>
 
@@ -137,7 +137,7 @@ export default function PowerUps({ uses, active, busy, onUse }: PowerUpsProps) {
                     setDetail(null);
                   }}
                   disabled={detailDisabled}
-                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gold-gradient px-4 py-2.5 font-body text-sm font-bold text-ink-deep shadow-gold-glow transition hover:brightness-105 active:scale-[0.98] disabled:opacity-40 disabled:shadow-none"
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gold-gradient px-4 py-2.5 font-body text-sm font-bold text-gold-ink shadow-gold-glow transition hover:brightness-105 active:scale-[0.98] disabled:opacity-40 disabled:shadow-none"
                 >
                   <Zap className="h-4 w-4" strokeWidth={2.4} />
                   {detailDisabled ? '已用完' : `立即使用 · ${detailConf.name}`}
@@ -146,7 +146,7 @@ export default function PowerUps({ uses, active, busy, onUse }: PowerUpsProps) {
 
               {/* 气泡小尖角，指向被点击的道具卡片 */}
               <div
-                className={`absolute -bottom-1.5 h-3 w-3 rotate-45 border-b border-r border-gold/40 bg-ink-panel ${
+                className={`absolute -bottom-1.5 h-3 w-3 rotate-45 border-b border-r border-gold/70 bg-ink-panel ${
                   detail === 'greenChannel' ? 'left-[16.6%]' : detail === 'markup' ? 'left-1/2' : 'left-[83.3%]'
                 } -translate-x-1/2`}
               />

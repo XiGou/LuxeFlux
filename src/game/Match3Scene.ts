@@ -38,7 +38,8 @@ export interface Match3SceneConfig {
 }
 
 /** 限量版标记色（金色，与 UI 强调色一致） */
-const LIMITED_GOLD = 0xffd977;
+// 限量版「深金」：奶白底上浅金（0xffd977）会泛白糊掉，改用高饱和深金
+const LIMITED_GOLD = 0xd9a72c;
 
 /** 场景配置持有者：GameBoardBridge 在创建 Phaser.Game 前写入 */
 export const SCENE_CONFIG: { current: Match3SceneConfig | null } = { current: null };
@@ -277,9 +278,9 @@ export default class Match3Scene extends Phaser.Scene {
         const py = cy + Math.sin(a) * half * 1.18;
         // 光点亮度自身也有呼吸，跑起来更「闪」
         const tw = 0.55 + 0.45 * Math.sin(t * 6 + k * 1.7);
-        g.fillStyle(0xfff8de, 0.75 * tw);
+        g.fillStyle(0xfff0be, 0.85 * tw);
         g.fillCircle(px, py, size * 0.075);
-        g.fillStyle(0xffd977, 0.4 * tw);
+        g.fillStyle(0xd9a72c, 0.5 * tw);
         g.fillCircle(px, py, size * 0.15);
       }
     }
@@ -515,15 +516,15 @@ export default class Match3Scene extends Phaser.Scene {
       graphics.strokeRoundedRect(-half - size * 0.05, -half - size * 0.05, size * 1.1, size * 1.1, radius + size * 0.05);
       graphics.lineStyle(Math.max(5, size * 0.07), LIMITED_GOLD, 0.34);
       graphics.strokeRoundedRect(-half - size * 0.025, -half - size * 0.025, size * 1.05, size * 1.05, radius + size * 0.03);
-      // 主金环：足够粗，缩到 40px 也还看得见
-      graphics.lineStyle(Math.max(2.5, size * 0.035), 0xffe9a8, 1);
+      // 主金环：足够粗，缩到 40px 也还看得见（深金才能在奶白底上「站住」）
+      graphics.lineStyle(Math.max(2.5, size * 0.035), 0xd9a72c, 1);
       graphics.strokeRoundedRect(-half, -half, size, size, radius);
-      // 内圈近白细线：给金环一道「金属倒角」
-      graphics.lineStyle(Math.max(1, size * 0.013), 0xffffff, 0.9);
+      // 内圈亮金细线：给金环一道「金属倒角」（白线在奶白底上会消失）
+      graphics.lineStyle(Math.max(1, size * 0.013), 0xffe9a8, 0.95);
       graphics.strokeRoundedRect(-half + size * 0.04, -half + size * 0.04, size * 0.92, size * 0.92, radius * 0.82);
     } else {
       // 爆破 / 炸弹符号：细金边（低调，不与限量配货的「高光主角」抢视线）
-      graphics.lineStyle(Math.max(1.6, size * 0.016), 0xd4af37, 0.7);
+      graphics.lineStyle(Math.max(1.6, size * 0.016), 0xb8860b, 0.85);
       graphics.strokeRoundedRect(-half, -half, size, size, radius);
     }
     view.frame = graphics;
@@ -543,7 +544,7 @@ export default class Match3Scene extends Phaser.Scene {
       .image(0, 0, LIMIT_HALO_KEY)
       .setDisplaySize(size * 1.85, size * 1.85)
       .setBlendMode(Phaser.BlendModes.ADD)
-      .setAlpha(0.95)
+      .setAlpha(1)
       .setDepth(-10);
     view.halo = halo;
 
@@ -552,7 +553,7 @@ export default class Match3Scene extends Phaser.Scene {
       .image(0, -size * 0.52, LIMIT_SHAFT_KEY)
       .setDisplaySize(size * 1.5, size * 1.9)
       .setBlendMode(Phaser.BlendModes.ADD)
-      .setAlpha(0.32)
+      .setAlpha(0.48)
       .setDepth(-8);
     view.shaft = shaft;
 
@@ -569,7 +570,7 @@ export default class Match3Scene extends Phaser.Scene {
       .image(0, 0, LIMIT_GLOSS_KEY)
       .setDisplaySize(size, size)
       .setBlendMode(Phaser.BlendModes.ADD)
-      .setAlpha(0.5)
+      .setAlpha(0.62)
       .setDepth(6);
     gloss.setMask(cardMask);
     view.gloss = gloss;
@@ -579,7 +580,7 @@ export default class Match3Scene extends Phaser.Scene {
       .image(0, 0, LIMIT_SWEEP_KEY)
       .setDisplaySize(size * 0.38, size * 1.7)
       .setBlendMode(Phaser.BlendModes.ADD)
-      .setAlpha(0.92)
+      .setAlpha(1)
       .setDepth(3);
     sweep.setMask(cardMask);
     view.sweep = sweep;
@@ -646,7 +647,7 @@ export default class Match3Scene extends Phaser.Scene {
       view,
       this.tweens.add({
         targets: shaft,
-        alpha: { from: 0.12, to: 0.3 },
+        alpha: { from: 0.26, to: 0.46 },
         scaleX: { from: 0.92, to: 1.08 },
         duration: 1240,
         yoyo: true,
@@ -1164,9 +1165,9 @@ export default class Match3Scene extends Phaser.Scene {
     const r0 = this.cellSize * 0.34;
     const r1 = this.cellSize * (1.1 + Math.min(cascade, 5) * 0.3);
     const g = this.add.graphics({ x, y }).setDepth(24);
-    g.lineStyle(3, 0xd4af37, 0.9);
+    g.lineStyle(3, 0xb8860b, 0.95);
     g.strokeCircle(0, 0, r0);
-    g.lineStyle(1.5, 0xfffdf8, 0.7);
+    g.lineStyle(1.5, 0xe8c56a, 0.8);
     g.strokeCircle(0, 0, r0 * 0.72);
     this.tweens.add({
       targets: g,
@@ -1196,7 +1197,7 @@ export default class Match3Scene extends Phaser.Scene {
     // 与 UI 的 cream-panel 一致，浅色下托盘更干净通透。
     this.backing.fillStyle(0xfffdf8, 1);
     this.backing.fillRoundedRect(pad, pad, width - pad * 2, height - pad * 2, 18);
-    this.backing.lineStyle(1.5, 0xc8a44d, 0.35);
+    this.backing.lineStyle(1.5, 0xb8860b, 0.55);
     this.backing.strokeRoundedRect(pad, pad, width - pad * 2, height - pad * 2, 18);
   }
 
