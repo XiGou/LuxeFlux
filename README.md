@@ -239,6 +239,39 @@ npx cap open android
 
 ---
 
+## 🌐 部署到 GitHub Pages（H5 線上試玩）
+
+仓库已内置 GitHub Actions 工作流 [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml)，
+push 到 `main` 即自动构建并发布纯 H5 版本，手机上可直接开链接试玩。
+
+**一次性设置**：GitHub 仓库 → Settings → Pages → Build and deployment → Source 选 **GitHub Actions**。
+
+**部署地址**：`https://<owner>.github.io/<repo>/`
+
+工作流做的事：
+
+1. `npm ci` 安装依赖（带 npm 缓存）；
+2. `npm test` 跑逻辑冒烟测试（2600+ 断言，逻辑挂了就不会发布）；
+3. `npm run build` 构建，并注入 `BASE_PATH=/<repo>/`；
+4. 写入 `dist/.nojekyll`，避免 Pages 用 Jekyll 处理产物；
+5. 上传 `dist/` 制品 → `actions/deploy-pages` 发布。
+
+### 为什么需要 `BASE_PATH`
+
+GitHub Pages 的项目页挂在 **子路径** `/LuxeFlux/` 下，而不是域名根目录。若继续用默认的
+相对路径 `./`，根路径下的 `sw.js` / `manifest.webmanifest` 会因为 URL 是 `/` 而解析到
+域名根目录，导致 **Service Worker 注册失败、PWA 无法安装**。
+因此 CI 里注入 `BASE_PATH=/<repo>/`，让资源、清单与 SW scope 全部落在子路径内：
+
+| 构建方式 | 命令 | 资源路径 | PWA `start_url` / scope |
+| --- | --- | --- | --- |
+| 本地 / Capacitor 原生壳 | `npm run build` | `./assets/...`（相对） | `./` |
+| GitHub Pages | `BASE_PATH=/LuxeFlux/ npm run build` | `/LuxeFlux/assets/...` | `/LuxeFlux/` |
+
+> `base` 默认值仍是 `./`，**Capacitor 原生构建行为完全不变**。
+
+---
+
 ## ⚙️ Capacitor 配置摘要
 
 ```json

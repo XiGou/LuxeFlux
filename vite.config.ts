@@ -2,6 +2,19 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+/**
+ * H5 部署子路径（默认 './'，即相对路径）。
+ *
+ * - 本地开发 / Capacitor 原生壳：必须保持相对路径 './'，
+ *   原生 WebView 以 file:// / capacitor:// 加载，绝对路径会直接 404。
+ * - GitHub Pages（项目页）：站点挂在 https://<user>.github.io/<repo>/ 子路径下，
+ *   CI 里通过环境变量 BASE_PATH=/<repo>/ 注入，保证资源、PWA 清单与 Service Worker
+ *   的 scope 都落在子路径内，而不是错误地指向域名根目录。
+ */
+const base = process.env.BASE_PATH || './';
+/** PWA 清单的 start_url / scope 必须落在同一子路径下，否则 PWA 无法安装 */
+const pwaBase = base === './' ? './' : base;
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
@@ -21,7 +34,8 @@ export default defineConfig({
         background_color: '#FBF8F1',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/',
+        start_url: pwaBase,
+        scope: pwaBase,
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
@@ -34,7 +48,7 @@ export default defineConfig({
       }
     })
   ],
-  base: './', // relative base: required for Capacitor file:// WebView serving
+  base, // './' for Capacitor file:// WebView; BASE_PATH=/<repo>/ for GitHub Pages
   build: {
     outDir: 'dist',
     target: 'es2018',
